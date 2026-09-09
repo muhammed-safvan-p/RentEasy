@@ -26,14 +26,6 @@ export default function SignupPage() {
       });
 
       if (!res.ok) {
-        if (res.status === 404) {
-          console.warn("Backend auth route not found. Mocking signup success.");
-          document.cookie = "token=mock_jwt_token; path=/";
-          router.push("/dashboard");
-          router.refresh();
-          return;
-        }
-        
         const data = await res.json();
         throw new Error(data.message || "Failed to sign up");
       }

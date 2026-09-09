@@ -26,16 +26,6 @@ export default function LoginPage() {
       });
 
       if (!res.ok) {
-        // If the backend doesn't exist yet, we'll get a 404. Let's mock a success for now.
-        if (res.status === 404) {
-          console.warn("Backend auth route not found. Mocking login success.");
-          // For a real app, don't do this. But to make the UI work end-to-end without a backend:
-          document.cookie = "token=mock_jwt_token; path=/";
-          router.push("/dashboard");
-          router.refresh();
-          return;
-        }
-        
         const data = await res.json();
         throw new Error(data.message || "Failed to login");
       }
