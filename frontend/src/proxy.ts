@@ -5,7 +5,7 @@ export function proxy(request: NextRequest) {
   const token = request.cookies.get('token')?.value;
 
   // Protect /dashboard and any other routes you add later
-  const protectedPaths = ['/dashboard', '/bookings', '/wallet', '/admin'];
+  const protectedPaths = ['/dashboard', '/bookings', '/wallet', '/admin', '/vehicles'];
   const isProtectedPath = protectedPaths.some((path) => 
     request.nextUrl.pathname.startsWith(path)
   );
@@ -33,6 +33,7 @@ export const config = {
     '/bookings/:path*', 
     '/wallet/:path*', 
     '/admin/:path*',
+    '/vehicles/:path*',
     '/login',
     '/signup'
   ],
