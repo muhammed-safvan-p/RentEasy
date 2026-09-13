@@ -20,29 +20,31 @@ class AuthService {
       password: hashedPassword,
     });
 
-    return this.generateToken(user._id);
+    const token = this.generateToken(user);
+    return { token, user };
   }
 
   async login(username, password) {
     // Check user
     const user = await userRepository.findByUsername(username);
     if (!user) {
-      throw new Error('Invalid credentials');
+      throw new Error('Username not found');
     }
 
     // Check password
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
-      throw new Error('Invalid credentials');
+      throw new Error('Incorrect password');
     }
 
-    return this.generateToken(user._id);
+    const token = this.generateToken(user);
+    return { token, user };
   }
 
-  generateToken(userId) {
+  generateToken(user) {
     // Use a secret key from env or fallback for dev
     const secret = process.env.JWT_SECRET || 'fallback_secret_key_for_dev_only';
-    return jwt.sign({ id: userId }, secret, {
+    return jwt.sign({ id: user._id, role: user.role }, secret, {
       expiresIn: '30d',
     });
   }
