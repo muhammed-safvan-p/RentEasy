@@ -5,6 +5,11 @@ const cookieParser = require('cookie-parser');
 const connectDB = require('./config/db');
 const healthRoutes = require('./routes/healthRoutes');
 const authRoutes = require('./routes/authRoutes');
+const adminRoutes = require('./routes/adminRoutes');
+const walletRoutes = require('./routes/walletRoutes');
+const vehicleRoutes = require('./routes/vehicleRoutes');
+const bookingRoutes = require('./routes/bookingRoutes');
+const userRoutes = require('./routes/userRoutes');
 
 // Initialize express app
 const app = express();
@@ -25,6 +30,11 @@ app.use(cookieParser());
 // Routes
 app.use('/api/health', healthRoutes);
 app.use('/api/auth', authRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/vehicles', walletRoutes);
+app.use('/api/vehicles', vehicleRoutes);
+app.use('/api/bookings', bookingRoutes);
+app.use('/api/user', userRoutes);
 
 // Error handling middleware (basic)
 app.use((err, req, res, next) => {
