@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import { DayPicker } from "react-day-picker";
 import "react-day-picker/style.css";
 import {
@@ -22,202 +23,61 @@ import {
   CalendarPlus,
 } from "lucide-react";
 
-interface Vehicle {
-  _id: string;
-  name: string;
-  plateNumber: string;
-  isActive: boolean;
-  notes?: string;
-  imageUrl?: string;
-  ownerIds: string[];
-}
+import useSWR from "swr";
+import { fetcher } from "@/lib/api";
+import { useVehicleDetail, useVehicleStatus, useVehicleWallet } from "@/hooks/useVehicleData";
+import { formatCurrency, formatDateNice, formatMonthParam, getBookingDurationDays } from "@/lib/formatters";
 
-interface VehicleStatus {
-  status: "booked" | "available";
-  until?: string;
-  nextBookingDate?: string;
-}
-
-interface WalletData {
-  cashBalance: number;
-  bankBalance: number;
-  totalBalance: number;
-}
-
-interface Booking {
-  _id: string;
-  customerName: string;
-  startDate?: string;
-  endDate?: string;
-  startDateTime?: string;
-  endDateTime?: string;
-  isPaid?: boolean;
-  paid?: boolean;
-  amount?: number;
-  totalAmount?: number;
-  paidAmount?: number;
-  balanceAmount?: number;
-  paymentMethod?: "cash" | "bank";
-}
+import { Booking, Vehicle, VehicleStatus, WalletData } from "@/types";
 
 export default function VehicleDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
 
-  const [vehicle, setVehicle] = useState<Vehicle | null>(null);
-  const [status, setStatus] = useState<VehicleStatus | null>(null);
-  const [wallet, setWallet] = useState<WalletData | null>(null);
-  const [bookings, setBookings] = useState<Booking[]>([]);
   const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
 
-  const [loading, setLoading] = useState(true);
-  const [calendarLoading, setCalendarLoading] = useState(false);
-  const [errorStatus, setErrorStatus] = useState<number | null>(null);
-  const [errorMessage, setErrorMessage] = useState("");
+  const { vehicle, isLoading: vehicleLoading, error: vehicleError } = useVehicleDetail(id);
+  const { status, isLoading: statusLoading, error: statusError } = useVehicleStatus(id);
+  const { wallet, isLoading: walletLoading, error: walletError } = useVehicleWallet(id);
 
-  const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000";
-
-  const formatMonthParam = (date: Date) => {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    return `${year}-${month}`;
-  };
-
-  const formatDateNice = (dateStr?: string | Date) => {
-    if (!dateStr) return "";
-    const d = new Date(dateStr);
-    return d.toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
-  };
-
-  const formatCurrency = (amount: number = 0) => {
-    return new Intl.NumberFormat("en-IN", {
-      style: "currency",
-      currency: "INR",
-      maximumFractionDigits: 0,
-    }).format(amount);
-  };
-
-  // Initial parallel fetch
-  useEffect(() => {
-    if (!id) return;
-
-    let isMounted = true;
-
-    const fetchInitialData = async () => {
-      setLoading(true);
-      setErrorStatus(null);
-      setErrorMessage("");
-
-      const monthParam = formatMonthParam(new Date());
-
-      try {
-        const [vehicleRes, statusRes, walletRes, bookingsRes] = await Promise.all([
-          fetch(`${baseUrl}/api/vehicles/${id}`, { credentials: "include" }),
-          fetch(`${baseUrl}/api/vehicles/${id}/status`, { credentials: "include" }),
-          fetch(`${baseUrl}/api/vehicles/${id}/wallet`, { credentials: "include" }),
-          fetch(`${baseUrl}/api/vehicles/${id}/bookings?month=${monthParam}`, { credentials: "include" }),
-        ]);
-
-        // Check for auth / permission errors
-        if (
-          vehicleRes.status === 401 ||
-          statusRes.status === 401 ||
-          walletRes.status === 401 ||
-          bookingsRes.status === 401
-        ) {
-          router.push("/login");
-          return;
-        }
-
-        if (
-          vehicleRes.status === 403 ||
-          statusRes.status === 403 ||
-          walletRes.status === 403 ||
-          bookingsRes.status === 403
-        ) {
-          if (isMounted) {
-            setErrorStatus(403);
-            setErrorMessage("You do not have permission to view this vehicle.");
-            setLoading(false);
-          }
-          return;
-        }
-
-        if (vehicleRes.status === 404) {
-          if (isMounted) {
-            setErrorStatus(404);
-            setErrorMessage("Vehicle not found.");
-            setLoading(false);
-          }
-          return;
-        }
-
-        if (!vehicleRes.ok) throw new Error("Failed to load vehicle details");
-        if (!statusRes.ok) throw new Error("Failed to load vehicle status");
-        if (!walletRes.ok) throw new Error("Failed to load vehicle wallet");
-        if (!bookingsRes.ok) throw new Error("Failed to load vehicle bookings");
-
-        const vehicleData = await vehicleRes.json();
-        const statusData = await statusRes.json();
-        const walletData = await walletRes.json();
-        const bookingsData = await bookingsRes.json();
-
-        if (isMounted) {
-          setVehicle(vehicleData);
-          setStatus(statusData);
-          setWallet(walletData.wallet || walletData);
-          setBookings(bookingsData);
-        }
-      } catch (err: unknown) {
-        if (isMounted) {
-          setErrorStatus(500);
-          setErrorMessage(err instanceof Error ? err.message : "An unexpected error occurred.");
-        }
-      } finally {
-        if (isMounted) {
-          setLoading(false);
-        }
-      }
-    };
-
-    fetchInitialData();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [id, baseUrl, router]);
-
-  // Re-fetch bookings when the visible month changes
-  const handleMonthChange = useCallback(
-    async (newMonth: Date) => {
-      setCurrentMonth(newMonth);
-      setSelectedBooking(null);
-      if (!id) return;
-
-      setCalendarLoading(true);
-      const monthParam = formatMonthParam(newMonth);
-
-      try {
-        const res = await fetch(`${baseUrl}/api/vehicles/${id}/bookings?month=${monthParam}`, {
-          credentials: "include",
-        });
-        if (res.ok) {
-          const data = await res.json();
-          setBookings(data);
-        }
-      } catch (err) {
-        console.error("Failed to re-fetch bookings for month", err);
-      } finally {
-        setCalendarLoading(false);
-      }
-    },
-    [id, baseUrl]
+  const monthParam = formatMonthParam(currentMonth);
+  const {
+    data: bookingsData,
+    isLoading: bookingsLoading,
+    error: bookingsError,
+  } = useSWR<Booking[]>(
+    id ? `/api/vehicles/${id}/bookings?month=${monthParam}` : null,
+    fetcher
   );
+
+  const bookings = bookingsData || [];
+
+  const loading = vehicleLoading || statusLoading || walletLoading;
+  const calendarLoading = bookingsLoading;
+
+  const anyError = vehicleError || statusError || walletError || bookingsError;
+  const errorStatus = anyError ? ((anyError as any).status || 500) : null;
+  const errorMessage = anyError
+    ? (anyError as any).status === 403
+      ? "You do not have permission to view this vehicle."
+      : (anyError as any).status === 404
+      ? "Vehicle not found."
+      : anyError.message || "An unexpected error occurred."
+    : "";
+
+  // Auth redirect if 401
+  useEffect(() => {
+    if (anyError && (anyError as any).status === 401) {
+      router.push("/login");
+    }
+  }, [anyError, router]);
+
+  // Switch month
+  const handleMonthChange = (newMonth: Date) => {
+    setCurrentMonth(newMonth);
+    setSelectedBooking(null);
+  };
 
   // Expand each booking's date range into individual days clipped to visible month
   const bookedDays = useMemo(() => {
@@ -231,8 +91,8 @@ export default function VehicleDetailPage() {
     const monthEnd = new Date(year, month + 1, 0, 23, 59, 59, 999);
 
     for (const b of bookings) {
-      const sStr = b.startDate || b.startDateTime;
-      const eStr = b.endDate || b.endDateTime;
+      const sStr = b.startDateTime;
+      const eStr = b.endDateTime;
       if (!sStr || !eStr) continue;
 
       const start = new Date(sStr);
@@ -257,14 +117,6 @@ export default function VehicleDetailPage() {
     return dates;
   }, [bookings, currentMonth]);
 
-  // Booking duration in days
-  const getBookingDurationDays = (startDate?: string, endDate?: string) => {
-    if (!startDate || !endDate) return 1;
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    return Math.ceil(Math.abs(end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-  };
-
   // When a day on the calendar is clicked, check if there is a matching booking
   const handleDayClick = (day: Date) => {
     const dayStart = new Date(day);
@@ -274,8 +126,8 @@ export default function VehicleDetailPage() {
     dayEnd.setHours(23, 59, 59, 999);
 
     const match = bookings.find((b) => {
-      const sStr = b.startDate || b.startDateTime;
-      const eStr = b.endDate || b.endDateTime;
+      const sStr = b.startDateTime;
+      const eStr = b.endDateTime;
       if (!sStr || !eStr) return false;
       const bStart = new Date(sStr);
       const bEnd = new Date(eStr);
@@ -396,12 +248,13 @@ export default function VehicleDetailPage() {
           <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 sm:gap-4 pb-1">
             {/* Left: Vehicle Identity */}
             <div className="flex items-center gap-3.5">
-              <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-gradient-to-br from-indigo-500/20 to-purple-500/10 border border-indigo-500/25 flex items-center justify-center text-indigo-400 shadow-sm shrink-0 overflow-hidden">
+              <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-gradient-to-br from-indigo-500/20 to-purple-500/10 border border-indigo-500/25 flex items-center justify-center text-indigo-400 shadow-sm shrink-0 overflow-hidden relative">
                 {vehicle?.imageUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
+                  <Image
                     src={vehicle.imageUrl}
                     alt={vehicle.name}
+                    width={80}
+                    height={80}
                     className="w-full h-full object-cover"
                   />
                 ) : (
@@ -595,16 +448,16 @@ export default function VehicleDetailPage() {
                         <CalendarDays className="w-3.5 h-3.5 text-slate-500" />Duration
                       </span>
                       <span className="text-slate-200 text-right">
-                        {formatDateNice(selectedBooking.startDate || selectedBooking.startDateTime || '')} &ndash; {formatDateNice(selectedBooking.endDate || selectedBooking.endDateTime || '')}
-                        <span className="text-slate-500"> &middot; {getBookingDurationDays(selectedBooking.startDate || selectedBooking.startDateTime, selectedBooking.endDate || selectedBooking.endDateTime)}d</span>
+                        {formatDateNice(selectedBooking.startDateTime)} &ndash; {formatDateNice(selectedBooking.endDateTime)}
+                        <span className="text-slate-500"> &middot; {getBookingDurationDays(selectedBooking.startDateTime, selectedBooking.endDateTime)}d</span>
                       </span>
                     </div>
-                    {selectedBooking.amount !== undefined && (
+                    {selectedBooking.totalAmount !== undefined && (
                       <div className="flex justify-between items-center">
                         <span className="text-slate-400 flex items-center gap-1.5">
                           <Banknote className="w-3.5 h-3.5 text-slate-500" />Amount
                         </span>
-                        <span className="font-bold text-white">{formatCurrency(selectedBooking.amount)}</span>
+                        <span className="font-bold text-white">{formatCurrency(selectedBooking.totalAmount)}</span>
                       </div>
                     )}
                     <div className="flex justify-between items-center pt-2 mt-1 border-t border-white/5">

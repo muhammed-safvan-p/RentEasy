@@ -27,7 +27,7 @@ export default function BottomNav() {
         { name: "Home", href: `/vehicles/${vehicleId}`, icon: Home, exact: true },
         { name: "Bookings", href: `/vehicles/${vehicleId}/bookings`, icon: Calendar, exact: false },
         { name: "Wallet", href: `/vehicles/${vehicleId}/wallet`, icon: Wallet, exact: false },
-        { name: "Vehicle", href: `/vehicles/${vehicleId}/vehicle`, icon: Car, exact: false },
+        { name: "Details", href: `/vehicles/${vehicleId}/details`, icon: Car, exact: false },
       ]
     : [
         { name: "Garage", href: "/dashboard", icon: Home, exact: false },
