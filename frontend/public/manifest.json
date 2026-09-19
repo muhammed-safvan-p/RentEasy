@@ -1,7 +1,7 @@
 {
   "name": "RentEasy",
   "short_name": "RentEasy",
-  "description": "Your modern real estate renting companion.",
+  "description": "Vehicle rental booking and fleet management system.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
