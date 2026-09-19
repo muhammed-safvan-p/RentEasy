@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { API_BASE_URL as baseUrl } from "@/lib/api";
 
 export default function AdminDashboardPage() {
   const [message, setMessage] = useState("Loading dashboard...");
@@ -8,7 +9,6 @@ export default function AdminDashboardPage() {
   useEffect(() => {
     const fetchDashboard = async () => {
       try {
-        const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000";
         const res = await fetch(`${baseUrl}/api/admin/dashboard`, {
           credentials: "include",
         });

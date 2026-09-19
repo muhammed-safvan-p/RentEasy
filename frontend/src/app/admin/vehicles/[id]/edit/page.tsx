@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, Save } from "lucide-react";
+import { API_BASE_URL as baseUrl } from "@/lib/api";
 
 interface User {
   _id: string;
@@ -29,8 +30,6 @@ export default function EditVehiclePage() {
     hourlyRate: "",
     ownerIds: [] as string[],
   });
-
-  const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000";
 
   // Fetch users and vehicle data
   useEffect(() => {

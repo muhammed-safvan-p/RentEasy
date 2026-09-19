@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { Car, ChevronRight, Search, RefreshCw, Plus } from "lucide-react";
+import { API_BASE_URL as baseUrl } from "@/lib/api";
 
 interface Owner {
   _id: string;
@@ -24,8 +25,6 @@ export default function AdminVehiclesPage() {
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [toggling, setToggling] = useState<string | null>(null); // vehicle id being toggled
-
-  const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000";
 
   const fetchVehicles = useCallback(async () => {
     setLoading(true);

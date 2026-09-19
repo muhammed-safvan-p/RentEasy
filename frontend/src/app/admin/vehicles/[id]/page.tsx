@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Car, ArrowLeft, User, Edit } from "lucide-react";
+import { API_BASE_URL as baseUrl } from "@/lib/api";
 
 interface Owner {
   _id: string;
@@ -47,8 +48,6 @@ export default function VehicleDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000";
-
   useEffect(() => {
     if (!id) return;
     const fetch_ = async () => {
@@ -62,7 +61,7 @@ export default function VehicleDetailPage() {
 
         const [walletRes, txRes] = await Promise.all([
           fetch(`${baseUrl}/api/vehicles/${id}/wallet`, { credentials: "include" }),
-          fetch(`${baseUrl}/api/vehicles/${id}/wallet/transactions`, { credentials: "include" }),
+          fetch(`${baseUrl}/api/vehicles/${id}/wallet/transactions?limit=50`, { credentials: "include" }),
         ]);
         if (walletRes.ok) {
           const walletData = await walletRes.json();

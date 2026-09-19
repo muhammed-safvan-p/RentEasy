@@ -3,16 +3,11 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Home, Users, Car, LogOut } from "lucide-react";
-import { useState, useEffect } from "react";
+import { API_BASE_URL as baseUrl } from "@/lib/api";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const [isClient, setIsClient] = useState(false);
-
-  useEffect(() => {
-    setIsClient(true);
-  }, []);
 
   const navItems = [
     { name: "Dashboard", href: "/admin/dashboard", icon: Home },
@@ -22,7 +17,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   const handleLogout = async () => {
     try {
-      const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000";
       await fetch(`${baseUrl}/api/auth/logout`, {
         method: "POST",
         credentials: "include",
@@ -33,8 +27,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       console.error("Failed to logout", err);
     }
   };
-
-  if (!isClient) return null; // Avoid hydration mismatch on initial render
 
   return (
     <div className="admin-layout flex h-screen w-full bg-[#f8fafc] text-slate-800 font-sans">

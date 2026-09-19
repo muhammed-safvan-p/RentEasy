@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { User, Search, RefreshCw, ShieldAlert, Shield } from "lucide-react";
+import { API_BASE_URL as baseUrl } from "@/lib/api";
 
 interface UserData {
   _id: string;
@@ -17,8 +18,6 @@ export default function AdminUsersPage() {
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [toggling, setToggling] = useState<string | null>(null);
-
-  const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000";
 
   const fetchUsers = useCallback(async () => {
     setLoading(true);
