@@ -1,65 +1,144 @@
-const mongoose = require('mongoose');
-const Booking = require('../models/Booking');
-const Wallet = require('../models/Wallet');
-const WalletTransaction = require('../models/WalletTransaction');
-const walletService = require('../services/walletService');
+const bookingService = require('../services/bookingService');
 
 class BookingController {
-  // PATCH /api/bookings/:id/pay
-  async markAsPaid(req, res) {
+  /**
+   * POST /api/bookings
+   * Create a new booking with transactional overlap checking.
+   */
+  async createBooking(req, res, next) {
     try {
-      const { id } = req.params;
-      const { paymentMethod } = req.body;
-
-      if (!['cash', 'bank'].includes(paymentMethod)) {
-        return res.status(400).json({ message: 'Invalid paymentMethod. Must be cash or bank.' });
-      }
-
-      const booking = await Booking.findById(id);
-      if (!booking) {
-        throw new Error('Booking not found');
-      }
-
-      if (booking.isPaid) {
-         return res.status(400).json({ message: 'Booking is already paid' });
-      }
-
-      // Mark booking as paid
-      booking.isPaid = true;
-      booking.paidAt = new Date();
-      booking.paymentMethod = paymentMethod;
-      await booking.save();
-
-      const wallet = await Wallet.findOne({ vehicleId: booking.vehicleId });
-      if (!wallet) {
-         throw new Error('Wallet not found for this booking\'s vehicle');
-      }
-
-      // Create WalletTransaction
-      const transaction = new WalletTransaction({
-        walletId: wallet._id,
-        vehicleId: booking.vehicleId,
-        type: 'income',
-        paymentMethod,
-        amount: booking.amount,
-        note: `Payment for booking ${booking._id}`,
-        source: 'booking',
-        bookingId: booking._id,
+      const { vehicleId, customerName, startDateTime, endDateTime, totalAmount } = req.body;
+      const { booking, suggestedAmount } = await bookingService.createBooking({
+        vehicleId,
+        customerName,
+        startDateTime,
+        endDateTime,
+        totalAmount,
         createdBy: req.user._id,
       });
 
-      await transaction.save();
-
-      // Update wallet balance
-      const updatedWallet = await walletService.applyTransaction(null, wallet, 'income', paymentMethod, booking.amount);
-      const warnings = walletService.buildWarnings(updatedWallet);
-
-      res.status(200).json({ booking, transaction, warnings });
+      res.status(201).json({
+        message: 'Booking created successfully',
+        booking,
+        suggestedAmount,
+      });
     } catch (error) {
-      if (['Booking not found', "Wallet not found for this booking's vehicle"].includes(error.message)) {
-         return res.status(404).json({ message: error.message });
-      }
-      res.status(500).json({ message: 'Error marking booking as paid', error: error.message });
+      next(error);
+    }
+  }
+
+  /**
+   * PATCH /api/bookings/:id
+   * Edit booking details/dates with transactional overlap check (excluding self).
+   */
+  async updateBooking(req, res, next) {
+    try {
+      const { id } = req.params;
+      const updatedBooking = await bookingService.updateBooking(id, req.body);
+
+      res.status(200).json({
+        message: 'Booking updated successfully',
+        booking: updatedBooking,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * POST /api/bookings/:id/cancel
+   * Cancel booking (soft delete), optional refund creates expense WalletTransaction.
+   */
+  async cancelBooking(req, res, next) {
+    try {
+      const { id } = req.params;
+      const { refundAmount, refundPaymentMethod, cancellationNote } = req.body;
+
+      const result = await bookingService.cancelBooking(id, {
+        refundAmount,
+        refundPaymentMethod,
+        cancellationNote,
+        cancelledBy: req.user._id,
+      });
+
+      res.status(200).json({
+        message: 'Booking cancelled successfully',
+        booking: result.booking,
+        refundTransaction: result.refundTransaction,
+        warnings: result.warnings,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * POST /api/bookings/:id/payments
+   * Record a new part-payment -> creates BookingPayment + income WalletTransaction + updates totals.
+   */
+  async recordPayment(req, res, next) {
+    try {
+      const { id } = req.params;
+      const { amount, paymentMethod, note, paidAt } = req.body;
+
+      const result = await bookingService.recordPayment(id, {
+        amount,
+        paymentMethod,
+        note,
+        paidAt,
+        recordedBy: req.user._id,
+      });
+
+      res.status(201).json({
+        message: 'Payment recorded successfully',
+        booking: result.booking,
+        payment: result.payment,
+        transaction: result.transaction,
+        warnings: result.warnings,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * GET /api/bookings/:id/payments
+   * List all payments made against a specific booking.
+   */
+  async listPayments(req, res, next) {
+    try {
+      const { id } = req.params;
+      const result = await bookingService.listPayments(id);
+      res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * GET /api/bookings?vehicleId=&isCancelled=&from=&to=
+   * List and filter bookings.
+   */
+  async listBookings(req, res, next) {
+    try {
+      const result = await bookingService.listBookings(req.query);
+      res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * GET /api/vehicles/:id/calendar?from=&to=
+   * Return vehicle's bookings in a date range for calendar UI.
+   */
+  async getVehicleCalendar(req, res, next) {
+    try {
+      const vehicleId = req.params.vehicleId || req.params.id;
+      const result = await bookingService.getVehicleCalendar(vehicleId, req.query);
+      res.status(200).json(result);
+    } catch (error) {
+      next(error);
     }
   }
 }

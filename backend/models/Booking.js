@@ -8,10 +8,6 @@ const bookingSchema = new Schema(
       ref: 'Vehicle',
       required: true,
     },
-    walletId: {
-      type: Schema.Types.ObjectId,
-      ref: 'Wallet',
-    },
     createdBy: {
       type: Schema.Types.ObjectId,
       ref: 'User',
@@ -22,33 +18,53 @@ const bookingSchema = new Schema(
       trim: true,
       required: true,
     },
-    startDate: {
+    startDateTime: {
       type: Date,
       required: true,
     },
-    endDate: {
+    endDateTime: {
       type: Date,
       required: true,
     },
-    isPaid: {
-      type: Boolean,
-      default: false,
+    totalAmount: {
+      type: Number,
+      required: true,
+      min: 0,
     },
-    paidAt: {
-      type: Date,
+    paidAmount: {
+      type: Number,
+      default: 0,
     },
-    amount: {
+    balanceAmount: {
       type: Number,
       required: true,
     },
-    paymentMethod: {
+    refundedAmount: {
+      type: Number,
+      default: 0,
+    },
+    isCancelled: {
+      type: Boolean,
+      default: false,
+    },
+    cancelledAt: {
+      type: Date,
+      default: null,
+    },
+    cancelledBy: {
+      type: Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
+    cancellationNote: {
       type: String,
-      enum: ['cash', 'bank'],
+      trim: true,
+      default: null,
     },
   },
   { timestamps: true }
 );
 
-bookingSchema.index({ vehicleId: 1, startDate: 1, endDate: 1 });
+bookingSchema.index({ vehicleId: 1, isCancelled: 1, startDateTime: 1, endDateTime: 1 });
 
 module.exports = mongoose.model('Booking', bookingSchema);
