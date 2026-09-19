@@ -1,14 +1,28 @@
 const jwt = require('jsonwebtoken');
-const User = require('../models/User');
+const userRepository = require('../repositories/userRepository');
+const vehicleRepository = require('../repositories/vehicleRepository');
 
 const protect = async (req, res, next) => {
   let token = req.cookies.token;
 
+  if (!token && req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
+    token = req.headers.authorization.split(' ')[1];
+  }
+
   if (token) {
     try {
-      const secret = process.env.JWT_SECRET || 'fallback_secret_key_for_dev_only';
+      const secret = process.env.JWT_SECRET;
+      if (!secret) {
+        throw new Error('JWT_SECRET is not defined in environment variables');
+      }
       const decoded = jwt.verify(token, secret);
-      req.user = await User.findById(decoded.id).select('-password');
+      req.user = await userRepository.findById(decoded.id, '-password');
+      if (!req.user) {
+        return res.status(401).json({ message: 'User not found' });
+      }
+      if (req.user.isBlock) {
+        return res.status(403).json({ message: 'Your account has been deactivated. Please contact support.' });
+      }
       next();
     } catch (error) {
       res.status(401).json({ message: 'Not authorized, token failed' });
@@ -26,8 +40,6 @@ const adminOnly = (req, res, next) => {
   }
 };
 
-const Vehicle = require('../models/Vehicle');
-
 const authorizeVehicleAccess = async (req, res, next) => {
   try {
     const vehicleId = req.params.vehicleId || req.params.id;
@@ -35,7 +47,7 @@ const authorizeVehicleAccess = async (req, res, next) => {
       return res.status(400).json({ message: 'Vehicle ID is required' });
     }
 
-    const vehicle = await Vehicle.findById(vehicleId);
+    const vehicle = await vehicleRepository.findById(vehicleId);
     if (!vehicle) {
       return res.status(404).json({ message: 'Vehicle not found' });
     }
