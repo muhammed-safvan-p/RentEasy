@@ -69,6 +69,16 @@ const vehicleSchema = new Schema(
       type: Boolean,
       default: true,
     },
+    dailyRate: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    hourlyRate: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
   },
   { timestamps: true }
 );

@@ -10,7 +10,6 @@ import {
   AlertCircle,
   Check,
   Copy,
-  Calendar,
   CalendarDays,
   TrendingUp,
   Clock,
@@ -172,17 +171,6 @@ export default function VehicleProfilePage() {
     }).format(amount);
   };
 
-  const formatDate = (dateStr?: string) => {
-    if (!dateStr) return "N/A";
-    const d = new Date(dateStr);
-    if (isNaN(d.getTime())) return "N/A";
-    return d.toLocaleDateString("en-IN", {
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-    });
-  };
-
   const formatNoteDate = (dateStr: string) => {
     const d = new Date(dateStr);
     if (isNaN(d.getTime())) return "";
@@ -195,21 +183,14 @@ export default function VehicleProfilePage() {
     });
   };
 
-  const getFleetAge = (createdAt?: string) => {
-    if (!createdAt) return "Recent";
-    const start = new Date(createdAt);
-    if (isNaN(start.getTime())) return "Recent";
-    const now = new Date();
-    const diffMonths = Math.max(
-      0,
-      (now.getFullYear() - start.getFullYear()) * 12 + (now.getMonth() - start.getMonth())
-    );
-    if (diffMonths === 0) return "New addition";
-    if (diffMonths === 1) return "1 month";
-    if (diffMonths < 12) return `${diffMonths} months`;
-    const years = Math.floor(diffMonths / 12);
-    const remMonths = diffMonths % 12;
-    return remMonths > 0 ? `${years}y ${remMonths}m` : `${years} ${years === 1 ? "year" : "years"}`;
+  const getGarageDate = (createdAt?: string) => {
+    if (!createdAt) return "N/A";
+    const date = new Date(createdAt);
+    if (isNaN(date.getTime())) return "N/A";
+    const day = String(date.getDate()).padStart(2, "0");
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const year = String(date.getFullYear());
+    return `${day}/${month}/${year}`;
   };
 
   // Add operational note
@@ -424,7 +405,7 @@ export default function VehicleProfilePage() {
                   <Car className="w-10 h-10 text-indigo-400" />
                 </div>
                 <span className="text-xs text-slate-400 font-medium tracking-wide">
-                  RentEasy Fleet Vehicle
+                  RentEasy Garage Vehicle
                 </span>
               </div>
             )}
@@ -443,7 +424,7 @@ export default function VehicleProfilePage() {
                     isVehicleActive ? "bg-emerald-400 animate-pulse" : "bg-amber-400"
                   }`}
                 />
-                {isVehicleActive ? "Active Fleet" : "Inactive"}
+                {isVehicleActive ? "In Garage" : "Inactive"}
               </span>
             </div>
           </div>
@@ -494,7 +475,7 @@ export default function VehicleProfilePage() {
           <div className="bg-[#1a1a2e] border border-white/10 rounded-2xl p-3 flex flex-col justify-between shadow-sm">
             <div className="flex items-center gap-1.5 text-slate-400 text-xs mb-1">
               <CalendarDays className="w-3.5 h-3.5 text-indigo-400" />
-              <span className="font-medium">Trips</span>
+              <span className="font-medium">Total Bookings</span>
             </div>
             <span className="text-lg font-black text-white">
               {stats?.totalTrips ?? 0}
@@ -505,21 +486,21 @@ export default function VehicleProfilePage() {
           <div className="bg-[#1a1a2e] border border-white/10 rounded-2xl p-3 flex flex-col justify-between shadow-sm">
             <div className="flex items-center gap-1.5 text-slate-400 text-xs mb-1">
               <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
-              <span className="font-medium">Earnings</span>
+              <span className="font-medium">Total Revenue</span>
             </div>
             <span className="text-base sm:text-lg font-black text-emerald-400 truncate">
               {formatCurrency(stats?.totalRevenue ?? 0)}
             </span>
           </div>
 
-          {/* Fleet Age */}
+          {/* In Garage Date */}
           <div className="bg-[#1a1a2e] border border-white/10 rounded-2xl p-3 flex flex-col justify-between shadow-sm">
             <div className="flex items-center gap-1.5 text-slate-400 text-xs mb-1">
               <Clock className="w-3.5 h-3.5 text-amber-400" />
-              <span className="font-medium">In Fleet</span>
+              <span className="font-medium">In Garage</span>
             </div>
             <span className="text-xs sm:text-sm font-bold text-white truncate">
-              {getFleetAge(vehicle?.createdAt)}
+              {getGarageDate(vehicle?.createdAt)}
             </span>
           </div>
         </div>
@@ -535,10 +516,10 @@ export default function VehicleProfilePage() {
             </h3>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-3 gap-2.5">
             {/* Fuel Type */}
-            <div className="bg-black/20 rounded-2xl p-3 border border-white/5 flex items-center gap-3">
-              <div className="w-8 h-8 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center shrink-0">
+            <div className="bg-black/20 rounded-2xl p-3 border border-white/5 flex flex-col justify-between">
+              <div className="w-8 h-8 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center shrink-0 mb-2">
                 <Fuel className="w-4 h-4" />
               </div>
               <div className="min-w-0">
@@ -552,8 +533,8 @@ export default function VehicleProfilePage() {
             </div>
 
             {/* Transmission */}
-            <div className="bg-black/20 rounded-2xl p-3 border border-white/5 flex items-center gap-3">
-              <div className="w-8 h-8 rounded-xl bg-indigo-500/10 text-indigo-400 flex items-center justify-center shrink-0">
+            <div className="bg-black/20 rounded-2xl p-3 border border-white/5 flex flex-col justify-between">
+              <div className="w-8 h-8 rounded-xl bg-indigo-500/10 text-indigo-400 flex items-center justify-center shrink-0 mb-2">
                 <Gauge className="w-4 h-4" />
               </div>
               <div className="min-w-0">
@@ -567,8 +548,8 @@ export default function VehicleProfilePage() {
             </div>
 
             {/* Seating Capacity */}
-            <div className="bg-black/20 rounded-2xl p-3 border border-white/5 flex items-center gap-3">
-              <div className="w-8 h-8 rounded-xl bg-purple-500/10 text-purple-400 flex items-center justify-center shrink-0">
+            <div className="bg-black/20 rounded-2xl p-3 border border-white/5 flex flex-col justify-between">
+              <div className="w-8 h-8 rounded-xl bg-purple-500/10 text-purple-400 flex items-center justify-center shrink-0 mb-2">
                 <Users className="w-4 h-4" />
               </div>
               <div className="min-w-0">
@@ -577,21 +558,6 @@ export default function VehicleProfilePage() {
                 </p>
                 <p className="text-xs sm:text-sm font-bold text-white truncate">
                   {vehicle?.seatingCapacity || 5} Seater
-                </p>
-              </div>
-            </div>
-
-            {/* Registered On */}
-            <div className="bg-black/20 rounded-2xl p-3 border border-white/5 flex items-center gap-3">
-              <div className="w-8 h-8 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center shrink-0">
-                <Calendar className="w-4 h-4" />
-              </div>
-              <div className="min-w-0">
-                <p className="text-[10px] uppercase font-semibold text-slate-400 tracking-wider">
-                  Added On
-                </p>
-                <p className="text-xs sm:text-sm font-bold text-white truncate">
-                  {formatDate(vehicle?.createdAt)}
                 </p>
               </div>
             </div>
@@ -605,7 +571,7 @@ export default function VehicleProfilePage() {
               <ShieldCheck className="w-4 h-4" />
             </div>
             <h3 className="text-sm font-bold text-white uppercase tracking-wider">
-              Authorized Owners
+              People who have access
             </h3>
           </div>
 
@@ -633,10 +599,6 @@ export default function VehicleProfilePage() {
                       )}
                     </div>
                   </div>
-
-                  <span className="text-[10px] font-semibold px-2.5 py-1 rounded-full bg-indigo-500/15 text-indigo-300 border border-indigo-500/20 shrink-0">
-                    Owner
-                  </span>
                 </div>
               ))
             ) : (
