@@ -31,6 +31,10 @@ class AuthService {
       throw new Error('Username not found');
     }
 
+    if (user.isBlock) {
+      throw new Error('Account blocked');
+    }
+
     // Check password
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {

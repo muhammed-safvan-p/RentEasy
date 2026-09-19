@@ -1,27 +1,10 @@
 const authService = require('../services/authService');
+const AppError = require('../utils/AppError');
 
 class AuthController {
-  async signup(req, res) {
+  async signup(req, res, next) {
     try {
       const { username, password } = req.body;
-
-      if (!username || !password) {
-        return res.status(400).json({ message: 'Please provide username and password' });
-      }
-
-      // Username: letters only (no numbers, symbols, spaces)
-      if (!/^[a-zA-Z]+$/.test(username)) {
-        return res.status(400).json({ message: 'Username must contain letters only — no numbers or symbols' });
-      }
-
-      if (username.length < 4) {
-        return res.status(400).json({ message: 'Username must be at least 4 characters long' });
-      }
-
-      // Password length: 6 to 8 characters
-      if (password.length < 6 || password.length > 8) {
-        return res.status(400).json({ message: 'Password must be between 6 and 8 characters' });
-      }
 
       const { token, user } = await authService.signup(username, password);
       
@@ -35,21 +18,16 @@ class AuthController {
 
       res.status(201).json({ message: 'Signup successful', role: user.role });
     } catch (error) {
-      // Improve the uniqueness error message from authService
       if (error.message === 'User already exists') {
-        return res.status(400).json({ message: 'Username is already taken. Please choose a different one.' });
+        return next(new AppError('Username is already taken. Please choose a different one.', 409));
       }
-      res.status(400).json({ message: error.message });
+      next(error);
     }
   }
 
-  async login(req, res) {
+  async login(req, res, next) {
     try {
       const { username, password } = req.body;
-
-      if (!username || !password) {
-        return res.status(400).json({ message: 'Please provide username and password' });
-      }
 
       const { token, user } = await authService.login(username, password);
 
@@ -63,7 +41,13 @@ class AuthController {
 
       res.status(200).json({ message: 'Login successful', role: user.role });
     } catch (error) {
-      res.status(401).json({ message: error.message });
+      if (error.message === 'Account blocked') {
+        return next(new AppError('Your account has been deactivated. Please contact support.', 403));
+      }
+      if (error.message === 'Username not found' || error.message === 'Incorrect password') {
+        return next(new AppError('Invalid username or password', 401));
+      }
+      next(error);
     }
   }
 

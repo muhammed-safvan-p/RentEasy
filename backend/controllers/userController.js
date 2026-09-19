@@ -1,63 +1,31 @@
-const Vehicle = require('../models/Vehicle');
-const Booking = require('../models/Booking');
+const userService = require('../services/userService');
 
 class UserController {
-  async getMe(req, res) {
+  async getMe(req, res, next) {
     try {
-      res.status(200).json(req.user);
+      const user = await userService.getMe(req.user._id);
+      res.status(200).json(user);
     } catch (error) {
-      res.status(500).json({ message: 'Error fetching user info', error: error.message });
+      next(error);
     }
   }
 
-  async getMyVehicles(req, res) {
+  async getMyVehicles(req, res, next) {
     try {
-      const vehicles = await Vehicle.find({ ownerIds: req.user._id }).sort({ createdAt: -1 });
-      
-      const vehiclesWithStats = await Promise.all(vehicles.map(async (vehicle) => {
-        const totalBookings = await Booking.countDocuments({ vehicleId: vehicle._id });
-        const unpaidBookings = await Booking.countDocuments({ vehicleId: vehicle._id, isPaid: false });
-        
-        return {
-          ...vehicle.toObject(),
-          totalBookings,
-          unpaidBookings
-        };
-      }));
-
+      const vehiclesWithStats = await userService.getMyVehicles(req.user._id);
       res.status(200).json(vehiclesWithStats);
     } catch (error) {
-      res.status(500).json({ message: 'Error fetching user vehicles', error: error.message });
+      next(error);
     }
   }
 
-  async updatePassword(req, res) {
+  async updatePassword(req, res, next) {
     try {
-      const { newPassword, confirmPassword } = req.body;
-      
-      if (!newPassword || !confirmPassword) {
-        return res.status(400).json({ message: 'New password and confirm password are required' });
-      }
-
-      if (newPassword !== confirmPassword) {
-        return res.status(400).json({ message: 'Passwords do not match' });
-      }
-
-      if (newPassword.length < 6 || newPassword.length > 8) {
-        return res.status(400).json({ message: 'Password must be between 6 and 8 characters' });
-      }
-
-      const bcrypt = require('bcryptjs');
-      const User = require('../models/User');
-
-      const salt = await bcrypt.genSalt(10);
-      const hashedPassword = await bcrypt.hash(newPassword, salt);
-
-      await User.findByIdAndUpdate(req.user._id, { password: hashedPassword });
-
-      res.status(200).json({ message: 'Password updated successfully' });
+      const { currentPassword, newPassword } = req.body;
+      const result = await userService.updatePassword(req.user._id, currentPassword, newPassword);
+      res.status(200).json(result);
     } catch (error) {
-      res.status(500).json({ message: 'Error updating password', error: error.message });
+      next(error);
     }
   }
 }
