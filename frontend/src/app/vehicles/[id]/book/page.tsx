@@ -3,96 +3,48 @@
 import { useEffect, useState, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import {
   ArrowLeft,
-  Calendar as CalendarIcon,
-  Clock,
-  User,
-  Banknote,
-  Building2,
-  AlertCircle,
   CheckCircle2,
   RotateCcw,
   Car,
   ChevronRight,
-  ShieldCheck,
-  Zap,
 } from "lucide-react";
-
-interface Vehicle {
-  _id: string;
-  name: string;
-  plateNumber: string;
-  imageUrl?: string;
-  dailyRate?: number;
-  hourlyRate?: number;
-  fuelType?: string;
-  transmission?: string;
-  seatingCapacity?: number;
-  isActive?: boolean;
-}
-
-interface CalendarBooking {
-  id: string;
-  _id: string;
-  customerName: string;
-  startDateTime: string;
-  endDateTime: string;
-  isCancelled: boolean;
-  totalAmount: number;
-}
+import { invalidateVehicleData } from "@/hooks/useVehicleData";
+import { API_BASE_URL as baseUrl } from "@/lib/api";
+import {
+  formatCurrency,
+  formatDateNice,
+  toLocalISOString,
+  toSafeDateISOString,
+} from "@/lib/formatters";
+import { BookingVehicle, CalendarBooking } from "@/types/booking";
+import { DateTimeSelector } from "@/components/book/DateTimeSelector";
+import { ConflictAlert } from "@/components/book/ConflictAlert";
+import { CustomerDetailsForm } from "@/components/book/CustomerDetailsForm";
+import { BookingPricingSummary } from "@/components/book/BookingPricingSummary";
+import { ErrorBanner } from "@/components/common/ErrorBanner";
 
 interface ConfirmedBooking {
   _id: string;
-  vehicleId?: string;
   customerName: string;
   startDateTime: string;
   endDateTime: string;
   totalAmount: number;
   paidAmount: number;
   balanceAmount: number;
-  paymentMethod?: "cash" | "bank" | null;
+  paymentMethod?: string;
+  paymentNote?: string;
+  status?: string;
 }
-
-// Format a Date object to "YYYY-MM-DDTHH:mm" for datetime-local input
-const toLocalISOString = (date: Date) => {
-  const pad = (n: number) => String(n).padStart(2, "0");
-  const year = date.getFullYear();
-  const month = pad(date.getMonth() + 1);
-  const day = pad(date.getDate());
-  const hours = pad(date.getHours());
-  const minutes = pad(date.getMinutes());
-  return `${year}-${month}-${day}T${hours}:${minutes}`;
-};
-
-// Format currency in INR
-const formatCurrency = (amount: number = 0) => {
-  return new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency: "INR",
-    maximumFractionDigits: 0,
-  }).format(amount);
-};
-
-// Format date nicely
-const formatDateNice = (dateStr?: string | Date) => {
-  if (!dateStr) return "";
-  const d = new Date(dateStr);
-  return d.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-};
 
 export default function VehicleBookingPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
-  const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000";
 
   // State
-  const [vehicle, setVehicle] = useState<Vehicle | null>(null);
+  const [vehicle, setVehicle] = useState<BookingVehicle | null>(null);
   const [calendarBookings, setCalendarBookings] = useState<CalendarBooking[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -100,34 +52,35 @@ export default function VehicleBookingPage() {
 
   // Form Fields
   const [customerName, setCustomerName] = useState("");
-
-  // Default start date = next clean hour, end date = +24 hours
-  const [startDateTime, setStartDateTime] = useState(() => {
-    const now = new Date();
-    now.setHours(now.getHours() + 1, 0, 0, 0);
-    return toLocalISOString(now);
-  });
-
-  const [endDateTime, setEndDateTime] = useState(() => {
-    const now = new Date();
-    now.setHours(now.getHours() + 25, 0, 0, 0);
-    return toLocalISOString(now);
-  });
-
-  // Total amount & manual override tracking
+  const [startDateTime, setStartDateTime] = useState("");
+  const [endDateTime, setEndDateTime] = useState("");
   const [customTotalAmount, setCustomTotalAmount] = useState<number | null>(null);
-  const isAmountOverridden = customTotalAmount !== null;
 
-  // Initial Payment states
+  // Payment section state
   const [recordPaymentNow, setRecordPaymentNow] = useState(false);
   const [paidAmount, setPaidAmount] = useState<number>(0);
   const [paymentMethod, setPaymentMethod] = useState<"cash" | "bank">("cash");
   const [paymentNote, setPaymentNote] = useState("");
 
-  // Success State
+  // Success state
   const [confirmedBooking, setConfirmedBooking] = useState<ConfirmedBooking | null>(null);
 
-  // 1. Fetch Vehicle & Existing Calendar Bookings
+  const isAmountOverridden = customTotalAmount !== null;
+
+  // Initialize Default Time Slot (+1 hour from now, for 24 hours)
+  useEffect(() => {
+    const now = new Date();
+    const start = new Date(now);
+    start.setHours(start.getHours() + 1, 0, 0, 0);
+
+    const end = new Date(start);
+    end.setDate(end.getDate() + 1);
+
+    setStartDateTime(toLocalISOString(start));
+    setEndDateTime(toLocalISOString(end));
+  }, []);
+
+  // Fetch Vehicle and Calendar Data
   useEffect(() => {
     if (!id) return;
     let isMounted = true;
@@ -137,9 +90,17 @@ export default function VehicleBookingPage() {
       setErrorMessage("");
 
       try {
+        const baseDate = startDateTime ? new Date(startDateTime) : new Date();
+        const validBase = isNaN(baseDate.getTime()) ? new Date() : baseDate;
+        const from = new Date(validBase.getFullYear(), validBase.getMonth() - 1, 1).toISOString();
+        const to = new Date(validBase.getFullYear(), validBase.getMonth() + 2, 0, 23, 59, 59, 999).toISOString();
+
         const [vehRes, calRes] = await Promise.all([
           fetch(`${baseUrl}/api/vehicles/${id}`, { credentials: "include" }),
-          fetch(`${baseUrl}/api/vehicles/${id}/calendar`, { credentials: "include" }),
+          fetch(
+            `${baseUrl}/api/vehicles/${id}/calendar?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+            { credentials: "include" }
+          ),
         ]);
 
         if (vehRes.status === 401 || calRes.status === 401) {
@@ -169,9 +130,9 @@ export default function VehicleBookingPage() {
     return () => {
       isMounted = false;
     };
-  }, [id, baseUrl, router]);
+  }, [id, router, startDateTime ? startDateTime.slice(0, 7) : ""]);
 
-  // 2. Duration & Pricing Calculations
+  // Duration & Pricing Calculations
   const durationInfo = useMemo(() => {
     if (!startDateTime || !endDateTime) return null;
     const start = new Date(startDateTime);
@@ -227,10 +188,10 @@ export default function VehicleBookingPage() {
     return 0;
   }, [vehicle, durationInfo]);
 
-  // Derived effective total amount (no effect required)
+  // Derived effective total amount
   const totalAmount = isAmountOverridden && customTotalAmount !== null ? customTotalAmount : suggestedRent;
 
-  // 3. Overlap Conflict Detection
+  // Overlap Conflict Detection
   const conflictingBooking = useMemo(() => {
     if (!durationInfo || !durationInfo.isValid) return null;
     const start = new Date(startDateTime);
@@ -240,7 +201,6 @@ export default function VehicleBookingPage() {
       if (b.isCancelled) return false;
       const bStart = new Date(b.startDateTime);
       const bEnd = new Date(b.endDateTime);
-      // Overlap: (bStart < end) && (bEnd > start)
       return bStart < end && bEnd > start;
     });
   }, [calendarBookings, startDateTime, endDateTime, durationInfo]);
@@ -249,7 +209,7 @@ export default function VehicleBookingPage() {
   const remainingBalance = useMemo(() => {
     const total = Number(totalAmount) || 0;
     const paid = recordPaymentNow ? Number(paidAmount) || 0 : 0;
-    return Math.max(0, total - paid);
+    return total - paid;
   }, [totalAmount, recordPaymentNow, paidAmount]);
 
   // Quick Preset Handlers
@@ -262,34 +222,32 @@ export default function VehicleBookingPage() {
 
   const handleApplyWeekendPreset = () => {
     const now = new Date();
-    const dayOfWeek = now.getDay(); // 0: Sun, 5: Fri
+    const dayOfWeek = now.getDay();
     const daysUntilFriday = (5 - dayOfWeek + 7) % 7 || 7;
 
     const friday = new Date(now);
     friday.setDate(now.getDate() + daysUntilFriday);
-    friday.setHours(17, 0, 0, 0); // Friday 5:00 PM
+    friday.setHours(17, 0, 0, 0);
 
     const sunday = new Date(friday);
     sunday.setDate(friday.getDate() + 2);
-    sunday.setHours(21, 0, 0, 0); // Sunday 9:00 PM
+    sunday.setHours(21, 0, 0, 0);
 
     setStartDateTime(toLocalISOString(friday));
     setEndDateTime(toLocalISOString(sunday));
     setCustomTotalAmount(null);
   };
 
-  // Quick Payment Percentage Handlers
   const setPaymentFraction = (fraction: number) => {
     const calculated = Math.round(totalAmount * fraction);
     setPaidAmount(calculated);
   };
 
-  // 4. Form Submit Handler
+  // Form Submit Handler
   const handleCreateBooking = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!vehicle) return;
+    if (!vehicle || submitting) return;
 
-    // Validation
     if (!customerName.trim()) {
       setErrorMessage("Please enter the customer name.");
       return;
@@ -310,8 +268,8 @@ export default function VehicleBookingPage() {
       return;
     }
 
-    if (recordPaymentNow && paidAmount > totalAmount) {
-      setErrorMessage("Paid amount cannot exceed the total rental amount.");
+    if (recordPaymentNow && Number(paidAmount) < 0) {
+      setErrorMessage("Paid amount cannot be negative.");
       return;
     }
 
@@ -327,8 +285,8 @@ export default function VehicleBookingPage() {
         body: JSON.stringify({
           vehicleId: vehicle._id,
           customerName: customerName.trim(),
-          startDateTime: new Date(startDateTime).toISOString(),
-          endDateTime: new Date(endDateTime).toISOString(),
+          startDateTime: toSafeDateISOString(startDateTime),
+          endDateTime: toSafeDateISOString(endDateTime),
           totalAmount: Number(totalAmount),
         }),
       });
@@ -340,155 +298,144 @@ export default function VehicleBookingPage() {
       }
 
       const newBooking = createData.booking;
+      let finalBookingState = newBooking;
 
-      // 2. Record Payment if toggled and amount > 0
-      let finalPaidAmount = 0;
-      let finalBalanceAmount = Number(totalAmount);
-
+      // 2. If Payment recorded immediately
       if (recordPaymentNow && Number(paidAmount) > 0) {
-        const paymentRes = await fetch(`${baseUrl}/api/bookings/${newBooking._id}/payments`, {
+        const payRes = await fetch(`${baseUrl}/api/bookings/${newBooking._id}/payments`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
           body: JSON.stringify({
             amount: Number(paidAmount),
-            paymentMethod: paymentMethod,
-            note: paymentNote.trim() || `Advance payment via ${paymentMethod}`,
+            paymentMethod,
+            note: paymentNote.trim() || "Initial Advance / Token Payment",
           }),
         });
 
-        const paymentData = await paymentRes.json();
-        if (paymentRes.ok && paymentData.booking) {
-          finalPaidAmount = paymentData.booking.paidAmount;
-          finalBalanceAmount = paymentData.booking.balanceAmount;
+        const payData = await payRes.json();
+        if (!payRes.ok) {
+          throw new Error(
+            payData.message ||
+              "Booking created, but recording initial payment failed. Please record payment in booking details."
+          );
         }
+
+        finalBookingState = payData.booking;
       }
 
-      // Success! Set confirmed state
+      // Invalidate global SWR caches
+      await invalidateVehicleData(id);
+
       setConfirmedBooking({
-        ...newBooking,
-        paidAmount: finalPaidAmount,
-        balanceAmount: finalBalanceAmount,
-        paymentMethod: recordPaymentNow && Number(paidAmount) > 0 ? paymentMethod : null,
+        ...finalBookingState,
+        paymentMethod: recordPaymentNow ? paymentMethod : undefined,
+        paymentNote: recordPaymentNow ? paymentNote : undefined,
       });
     } catch (err: unknown) {
-      setErrorMessage(
-        err instanceof Error
-          ? err.message
-          : "An unexpected error occurred while creating booking."
-      );
+      setErrorMessage(err instanceof Error ? err.message : "An error occurred while booking");
     } finally {
       setSubmitting(false);
     }
   };
 
-  // Loading Skeleton
   if (loading) {
     return (
-      <div className="flex flex-col min-h-screen px-6 pt-8 pb-32 animate-pulse space-y-6">
+      <div className="flex flex-col min-h-screen px-5 pt-8 pb-28 max-w-lg mx-auto w-full space-y-6 animate-pulse">
         <div className="flex items-center justify-between">
           <div className="w-10 h-10 rounded-full bg-[#1a1a2e]" />
-          <div className="w-32 h-5 bg-[#1a1a2e] rounded-lg" />
-          <div className="w-10" />
+          <div className="w-28 h-6 bg-[#1a1a2e] rounded-lg" />
+          <div className="w-10 h-10" />
         </div>
         <div className="h-28 bg-[#1a1a2e] rounded-3xl" />
-        <div className="h-20 bg-[#1a1a2e] rounded-2xl" />
+        <div className="h-20 bg-[#1a1a2e] rounded-3xl" />
         <div className="h-44 bg-[#1a1a2e] rounded-3xl" />
-        <div className="h-24 bg-[#1a1a2e] rounded-2xl" />
+        <div className="h-32 bg-[#1a1a2e] rounded-3xl" />
       </div>
     );
   }
 
-  // Confirmed Booking Screen
+  // Confirmation View
   if (confirmedBooking) {
     return (
-      <div className="flex flex-col min-h-screen px-6 pt-8 pb-12 animate-in fade-in zoom-in-95 duration-300">
-        {/* Success Header */}
-        <div className="flex flex-col items-center text-center mt-6 mb-8">
-          <div className="w-18 h-18 rounded-3xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 mb-4 shadow-[0_0_35px_rgba(16,185,129,0.2)]">
-            <CheckCircle2 className="w-10 h-10" />
+      <div className="flex flex-col min-h-screen px-5 pt-8 pb-28 max-w-lg mx-auto w-full animate-in fade-in zoom-in-95 duration-200">
+        <div className="text-center mb-6">
+          <div className="w-16 h-16 rounded-3xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto mb-3 shadow-lg shadow-emerald-500/10">
+            <CheckCircle2 className="w-8 h-8" />
           </div>
-          <span className="text-xs font-bold uppercase tracking-widest text-emerald-400 mb-1">
-            Confirmed
-          </span>
-          <h1 className="text-2xl font-extrabold text-white tracking-tight">
-            Booking Created!
-          </h1>
+          <h1 className="text-xl font-black text-white tracking-tight">Booking Confirmed!</h1>
           <p className="text-xs text-slate-400 mt-1">
-            Reservation has been registered and scheduled into the fleet calendar.
+            Trip reservation created & scheduled successfully.
           </p>
         </div>
 
-        {/* Summary Card */}
-        <div className="bg-[#1a1a2e] border border-white/10 rounded-3xl p-5 shadow-2xl space-y-4 mb-8">
-          <div className="flex items-center justify-between pb-3 border-b border-white/5">
-            <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
-                <Car className="w-4 h-4" />
-              </div>
-              <div>
-                <p className="text-sm font-bold text-white">{vehicle?.name}</p>
-                <p className="font-mono text-[11px] text-slate-400">{vehicle?.plateNumber}</p>
-              </div>
+        <div className="bg-[#1a1a2e] border border-white/10 rounded-3xl p-5 space-y-4 shadow-xl mb-6">
+          <div className="flex items-center justify-between border-b border-white/5 pb-3">
+            <div>
+              <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+                Customer Name
+              </p>
+              <p className="text-base font-bold text-white mt-0.5">
+                {confirmedBooking.customerName}
+              </p>
             </div>
-            <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-white/5 text-slate-400 border border-white/5">
-              #{confirmedBooking._id.slice(-6).toUpperCase()}
-            </span>
+            <div className="text-right">
+              <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+                Booking ID
+              </p>
+              <p className="font-mono text-xs text-indigo-400 font-bold mt-0.5">
+                #{confirmedBooking._id.slice(-6).toUpperCase()}
+              </p>
+            </div>
           </div>
 
-          <div className="space-y-2.5 text-xs">
-            <div className="flex justify-between items-center">
-              <span className="text-slate-400">Customer</span>
-              <span className="font-semibold text-white">{confirmedBooking.customerName}</span>
+          <div className="space-y-2 text-xs">
+            <div className="flex justify-between">
+              <span className="text-slate-400">Vehicle:</span>
+              <span className="font-bold text-white">
+                {vehicle?.name} ({vehicle?.plateNumber})
+              </span>
             </div>
-
-            <div className="flex justify-between items-start">
-              <span className="text-slate-400">Duration</span>
-              <div className="text-right">
-                <p className="font-medium text-slate-200">
-                  {formatDateNice(confirmedBooking.startDateTime)} &rarr;{" "}
-                  {formatDateNice(confirmedBooking.endDateTime)}
-                </p>
-              </div>
+            <div className="flex justify-between">
+              <span className="text-slate-400">Starts:</span>
+              <span className="font-semibold text-slate-200">
+                {formatDateNice(confirmedBooking.startDateTime)}
+              </span>
             </div>
+            <div className="flex justify-between">
+              <span className="text-slate-400">Ends:</span>
+              <span className="font-semibold text-slate-200">
+                {formatDateNice(confirmedBooking.endDateTime)}
+              </span>
+            </div>
+          </div>
 
-            <div className="flex justify-between items-center pt-2 border-t border-white/5">
-              <span className="text-slate-400">Total Rental</span>
-              <span className="text-base font-bold text-white">
+          <div className="bg-[#101020] rounded-2xl p-4 border border-white/5 space-y-2 text-xs">
+            <div className="flex justify-between">
+              <span className="text-slate-400">Total Rental:</span>
+              <span className="font-bold text-white">
                 {formatCurrency(confirmedBooking.totalAmount)}
               </span>
             </div>
-
-            <div className="flex justify-between items-center">
-              <span className="text-slate-400">Paid Now</span>
-              <div className="flex items-center gap-1.5">
-                {confirmedBooking.paymentMethod && (
-                  <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-white/5 text-slate-300">
-                    {confirmedBooking.paymentMethod}
-                  </span>
-                )}
-                <span className="font-semibold text-emerald-400">
-                  {formatCurrency(confirmedBooking.paidAmount)}
-                </span>
-              </div>
+            <div className="flex justify-between">
+              <span className="text-emerald-400">Paid / Advance:</span>
+              <span className="font-bold text-emerald-400">
+                {formatCurrency(confirmedBooking.paidAmount)}
+              </span>
             </div>
-
-            <div className="flex justify-between items-center pt-2 border-t border-white/5">
-              <span className="text-slate-400">Remaining Balance</span>
-              <span
-                className={`text-sm font-bold ${
-                  confirmedBooking.balanceAmount === 0 ? "text-emerald-400" : "text-amber-400"
-                }`}
-              >
-                {confirmedBooking.balanceAmount === 0
-                  ? "Fully Paid ✓"
+            <div className="flex justify-between pt-2 border-t border-white/5">
+              <span className={confirmedBooking.balanceAmount < 0 ? "text-emerald-400 font-bold" : "text-amber-400 font-bold"}>
+                {confirmedBooking.balanceAmount < 0 ? "Customer Credit:" : "Balance Remaining:"}
+              </span>
+              <span className={confirmedBooking.balanceAmount < 0 ? "text-emerald-400 font-black" : "text-amber-400 font-black"}>
+                {confirmedBooking.balanceAmount < 0
+                  ? `+${formatCurrency(Math.abs(confirmedBooking.balanceAmount))}`
                   : formatCurrency(confirmedBooking.balanceAmount)}
               </span>
             </div>
           </div>
         </div>
 
-        {/* Action Buttons */}
         <div className="space-y-3 mt-auto">
           <Link
             href={`/vehicles/${id}`}
@@ -518,7 +465,7 @@ export default function VehicleBookingPage() {
   }
 
   return (
-    <div className="flex flex-col min-h-screen px-5 pt-7 pb-36 relative">
+    <div className="flex flex-col min-h-screen px-5 pt-7 pb-36 max-w-lg mx-auto w-full relative">
       {/* 1. Header Navigation */}
       <div className="flex items-center justify-between pb-4">
         <Link
@@ -532,28 +479,24 @@ export default function VehicleBookingPage() {
           <h1 className="text-sm font-bold text-white tracking-wide">New Booking</h1>
           <p className="text-[10px] text-indigo-400 font-medium">Fast Fleet Reservation</p>
         </div>
-        <div className="w-10" /> {/* Spacer balance */}
+        <div className="w-10" />
       </div>
 
       {/* Global Error Banner */}
-      {errorMessage && (
-        <div className="mb-4 p-3.5 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2.5 animate-in fade-in duration-200">
-          <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
-          <p className="flex-1">{errorMessage}</p>
-        </div>
-      )}
+      <ErrorBanner message={errorMessage} onDismiss={() => setErrorMessage("")} />
 
       {/* 2. Vehicle Context Card */}
       <section className="bg-gradient-to-br from-[#1c1c30] to-[#141426] border border-white/10 rounded-3xl p-4 mb-5 shadow-xl relative overflow-hidden">
         <div className="absolute -top-10 -right-10 w-28 h-28 bg-indigo-500/10 blur-2xl rounded-full pointer-events-none" />
 
         <div className="flex items-center gap-3.5 relative z-10">
-          <div className="w-13 h-13 rounded-2xl bg-indigo-500/15 border border-indigo-500/25 flex items-center justify-center text-indigo-400 shrink-0 overflow-hidden shadow-sm">
+          <div className="w-13 h-13 rounded-2xl bg-indigo-500/15 border border-indigo-500/25 flex items-center justify-center text-indigo-400 shrink-0 overflow-hidden shadow-sm relative">
             {vehicle?.imageUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
+              <Image
                 src={vehicle.imageUrl}
                 alt={vehicle.name}
+                width={80}
+                height={80}
                 className="w-full h-full object-cover"
               />
             ) : (
@@ -593,403 +536,72 @@ export default function VehicleBookingPage() {
       </section>
 
       <form onSubmit={handleCreateBooking} className="space-y-5">
-        {/* 3. Customer Details Section */}
-        <section className="bg-[#17172a] border border-white/10 rounded-3xl p-4 shadow-lg space-y-3">
-          <div className="flex items-center gap-2 text-slate-400">
-            <User className="w-4 h-4 text-indigo-400" />
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-300">
-              Customer Information
-            </span>
-          </div>
+        {/* 3. Customer Details */}
+        <CustomerDetailsForm
+          customerName={customerName}
+          onCustomerNameChange={setCustomerName}
+        />
 
-          <div>
-            <label
-              htmlFor="customerName"
-              className="block text-[11px] font-medium text-slate-400 mb-1.5"
-            >
-              Customer Name <span className="text-rose-400">*</span>
-            </label>
-            <input
-              id="customerName"
-              type="text"
-              required
-              autoFocus
-              value={customerName}
-              onChange={(e) => setCustomerName(e.target.value)}
-              placeholder="e.g. Rahul Sharma"
-              className="w-full bg-[#101020] border border-white/10 rounded-2xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500/80 focus:ring-2 focus:ring-indigo-500/20 transition-all shadow-inner"
-            />
-          </div>
-        </section>
+        {/* 4. Schedule & Duration */}
+        <DateTimeSelector
+          startDateTime={startDateTime}
+          endDateTime={endDateTime}
+          durationInfo={durationInfo}
+          hasConflict={!!conflictingBooking}
+          onStartDateTimeChange={(val) => {
+            setStartDateTime(val);
+            setCustomTotalAmount(null);
+          }}
+          onEndDateTimeChange={(val) => {
+            setEndDateTime(val);
+            setCustomTotalAmount(null);
+          }}
+          onApplyPreset={handleApplyPreset}
+          onApplyWeekendPreset={handleApplyWeekendPreset}
+        />
 
-        {/* 4. Rental Schedule & Duration Section */}
-        <section className="bg-[#17172a] border border-white/10 rounded-3xl p-4 shadow-lg space-y-3.5">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-slate-400">
-              <CalendarIcon className="w-4 h-4 text-indigo-400" />
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-300">
-                Rental Schedule
-              </span>
-            </div>
+        {/* Overlap Conflict Card */}
+        <ConflictAlert
+          conflictingBooking={conflictingBooking}
+          formatDateNice={formatDateNice}
+        />
 
-            {/* Quick Duration Preset Pills */}
-            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
-              <button
-                type="button"
-                onClick={() => handleApplyPreset(1)}
-                className="text-[10px] font-semibold px-2 py-1 rounded-lg bg-white/5 hover:bg-indigo-500/20 hover:text-indigo-300 text-slate-400 border border-white/5 transition-all"
-              >
-                +1d
-              </button>
-              <button
-                type="button"
-                onClick={() => handleApplyPreset(2)}
-                className="text-[10px] font-semibold px-2 py-1 rounded-lg bg-white/5 hover:bg-indigo-500/20 hover:text-indigo-300 text-slate-400 border border-white/5 transition-all"
-              >
-                +2d
-              </button>
-              <button
-                type="button"
-                onClick={() => handleApplyPreset(3)}
-                className="text-[10px] font-semibold px-2 py-1 rounded-lg bg-white/5 hover:bg-indigo-500/20 hover:text-indigo-300 text-slate-400 border border-white/5 transition-all"
-              >
-                +3d
-              </button>
-              <button
-                type="button"
-                onClick={handleApplyWeekendPreset}
-                className="text-[10px] font-semibold px-2 py-1 rounded-lg bg-white/5 hover:bg-indigo-500/20 hover:text-indigo-300 text-slate-400 border border-white/5 transition-all"
-              >
-                Weekend
-              </button>
-            </div>
-          </div>
+        {/* 5. Pricing & Advance Payment */}
+        <BookingPricingSummary
+          vehicle={vehicle}
+          suggestedRent={suggestedRent}
+          totalAmount={totalAmount}
+          isAmountOverridden={isAmountOverridden}
+          recordPaymentNow={recordPaymentNow}
+          paidAmount={paidAmount}
+          paymentMethod={paymentMethod}
+          paymentNote={paymentNote}
+          remainingBalance={remainingBalance}
+          formatCurrency={formatCurrency}
+          onResetToSuggested={() => setCustomTotalAmount(null)}
+          onTotalAmountChange={(val) => setCustomTotalAmount(val)}
+          onRecordPaymentToggle={(checked) => {
+            setRecordPaymentNow(checked);
+            if (checked && paidAmount === 0 && totalAmount > 0) {
+              setPaidAmount(totalAmount);
+            }
+          }}
+          onPaidAmountChange={setPaidAmount}
+          onPaymentFraction={setPaymentFraction}
+          onPaymentMethodChange={setPaymentMethod}
+          onPaymentNoteChange={setPaymentNote}
+        />
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {/* Start Date & Time */}
-            <div>
-              <label
-                htmlFor="startDateTime"
-                className="block text-[11px] font-medium text-slate-400 mb-1.5"
-              >
-                Start Date & Time
-              </label>
-              <input
-                id="startDateTime"
-                type="datetime-local"
-                required
-                value={startDateTime}
-                onChange={(e) => {
-                  setStartDateTime(e.target.value);
-                  setCustomTotalAmount(null);
-                }}
-                className="w-full bg-[#101020] border border-white/10 rounded-2xl px-3.5 py-2.5 text-xs sm:text-sm text-white focus:outline-none focus:border-indigo-500/80 focus:ring-2 focus:ring-indigo-500/20 transition-all shadow-inner [color-scheme:dark]"
-              />
-            </div>
-
-            {/* End Date & Time */}
-            <div>
-              <label
-                htmlFor="endDateTime"
-                className="block text-[11px] font-medium text-slate-400 mb-1.5"
-              >
-                End Date & Time
-              </label>
-              <input
-                id="endDateTime"
-                type="datetime-local"
-                required
-                value={endDateTime}
-                onChange={(e) => {
-                  setEndDateTime(e.target.value);
-                  setCustomTotalAmount(null);
-                }}
-                className="w-full bg-[#101020] border border-white/10 rounded-2xl px-3.5 py-2.5 text-xs sm:text-sm text-white focus:outline-none focus:border-indigo-500/80 focus:ring-2 focus:ring-indigo-500/20 transition-all shadow-inner [color-scheme:dark]"
-              />
-            </div>
-          </div>
-
-          {/* Duration & Overlap Status Indicator */}
-          <div className="pt-2 border-t border-white/5 flex flex-col gap-2">
-            <div className="flex items-center justify-between text-xs">
-              <div className="flex items-center gap-1.5 text-slate-400">
-                <Clock className="w-3.5 h-3.5 text-indigo-400" />
-                <span>Calculated Duration:</span>
-                <span className="font-bold text-indigo-300">
-                  {durationInfo?.isValid ? durationInfo.label : "Invalid"}
-                </span>
-              </div>
-
-              {!conflictingBooking && durationInfo?.isValid && (
-                <div className="flex items-center gap-1 text-[11px] font-semibold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/20">
-                  <ShieldCheck className="w-3 h-3" />
-                  <span>Available</span>
-                </div>
-              )}
-            </div>
-
-            {/* Overlap Alert Card if clashing */}
-            {conflictingBooking && (
-              <div className="p-3 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-start gap-2.5 animate-in fade-in duration-200">
-                <AlertCircle className="w-4 h-4 shrink-0 text-rose-400 mt-0.5" />
-                <div className="flex-1">
-                  <p className="font-bold text-rose-200">Schedule Conflict Detected!</p>
-                  <p className="text-[11px] text-rose-300/90 mt-0.5 leading-relaxed">
-                    Already booked for{" "}
-                    <span className="font-semibold text-white">
-                      {conflictingBooking.customerName}
-                    </span>{" "}
-                    from {formatDateNice(conflictingBooking.startDateTime)} to{" "}
-                    {formatDateNice(conflictingBooking.endDateTime)}.
-                  </p>
-                </div>
-              </div>
-            )}
-          </div>
-        </section>
-
-        {/* 5. Rental Charges & Override Section */}
-        <section className="bg-[#17172a] border border-white/10 rounded-3xl p-4 shadow-lg space-y-3.5">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-slate-400">
-              <Banknote className="w-4 h-4 text-indigo-400" />
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-300">
-                Rental Charges
-              </span>
-            </div>
-
-            {isAmountOverridden && suggestedRent > 0 && (
-              <button
-                type="button"
-                onClick={() => {
-                  setCustomTotalAmount(null);
-                }}
-                className="text-[11px] font-semibold text-indigo-400 hover:text-indigo-300 flex items-center gap-1 transition-colors"
-              >
-                <RotateCcw className="w-3 h-3" />
-                <span>Reset to suggested ({formatCurrency(suggestedRent)})</span>
-              </button>
-            )}
-          </div>
-
-          <div>
-            <label
-              htmlFor="totalAmount"
-              className="block text-[11px] font-medium text-slate-400 mb-1.5"
-            >
-              Total Rent Amount (₹)
-            </label>
-            <div className="relative">
-              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-base">
-                ₹
-              </span>
-              <input
-                id="totalAmount"
-                type="number"
-                min="0"
-                step="1"
-                required
-                value={totalAmount || ""}
-                onChange={(e) => {
-                  setCustomTotalAmount(Number(e.target.value));
-                }}
-                className="w-full bg-[#101020] border border-white/10 rounded-2xl pl-9 pr-4 py-3 text-base font-bold text-white focus:outline-none focus:border-indigo-500/80 focus:ring-2 focus:ring-indigo-500/20 transition-all shadow-inner"
-              />
-            </div>
-
-            <div className="flex items-center justify-between mt-2 text-[11px] text-slate-500">
-              <span>
-                Suggested:{" "}
-                <strong className="text-slate-300">{formatCurrency(suggestedRent)}</strong>
-              </span>
-              {vehicle?.dailyRate ? (
-                <span>Rate: {formatCurrency(vehicle.dailyRate)}/day</span>
-              ) : vehicle?.hourlyRate ? (
-                <span>Rate: {formatCurrency(vehicle.hourlyRate)}/hr</span>
-              ) : null}
-            </div>
-          </div>
-        </section>
-
-        {/* 6. Initial Payment / Advance Section (Optional Toggle) */}
-        <section className="bg-[#17172a] border border-white/10 rounded-3xl p-4 shadow-lg space-y-3.5 transition-all">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="w-6 h-6 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
-                <Zap className="w-3.5 h-3.5" />
-              </div>
-              <span className="text-xs font-bold text-white">Record Payment / Advance Now</span>
-            </div>
-
-            {/* Switch Toggle */}
-            <label className="relative inline-flex items-center cursor-pointer">
-              <input
-                type="checkbox"
-                checked={recordPaymentNow}
-                onChange={(e) => {
-                  const checked = e.target.checked;
-                  setRecordPaymentNow(checked);
-                  if (checked && paidAmount === 0 && totalAmount > 0) {
-                    setPaidAmount(totalAmount); // Default to full or user can adjust
-                  }
-                }}
-                className="sr-only peer"
-              />
-              <div className="w-10 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-500"></div>
-            </label>
-          </div>
-
-          {/* Accordion Content */}
-          {recordPaymentNow && (
-            <div className="pt-3 border-t border-white/5 space-y-4 animate-in fade-in slide-in-from-top-2 duration-200">
-              {/* Payment Amount */}
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label htmlFor="paidAmount" className="text-[11px] font-medium text-slate-400">
-                    Amount Received Now (₹)
-                  </label>
-                  {/* Quick percentage buttons */}
-                  <div className="flex items-center gap-1">
-                    <button
-                      type="button"
-                      onClick={() => setPaymentFraction(1)}
-                      className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-white/5 hover:bg-emerald-500/20 hover:text-emerald-300 text-slate-400 border border-white/5"
-                    >
-                      100%
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setPaymentFraction(0.5)}
-                      className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-white/5 hover:bg-indigo-500/20 hover:text-indigo-300 text-slate-400 border border-white/5"
-                    >
-                      50%
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setPaymentFraction(0.25)}
-                      className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-white/5 hover:bg-indigo-500/20 hover:text-indigo-300 text-slate-400 border border-white/5"
-                    >
-                      25%
-                    </button>
-                  </div>
-                </div>
-
-                <div className="relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-base">
-                    ₹
-                  </span>
-                  <input
-                    id="paidAmount"
-                    type="number"
-                    min="0"
-                    max={totalAmount}
-                    value={paidAmount || ""}
-                    onChange={(e) => setPaidAmount(Number(e.target.value))}
-                    className="w-full bg-[#101020] border border-white/10 rounded-2xl pl-9 pr-4 py-2.5 text-sm font-bold text-white focus:outline-none focus:border-indigo-500/80 focus:ring-2 focus:ring-indigo-500/20 transition-all shadow-inner"
-                  />
-                </div>
-              </div>
-
-              {/* Payment Method Selector */}
-              <div>
-                <label className="block text-[11px] font-medium text-slate-400 mb-2">
-                  Payment Method
-                </label>
-                <div className="grid grid-cols-2 gap-2.5">
-                  <button
-                    type="button"
-                    onClick={() => setPaymentMethod("cash")}
-                    className={`flex items-center gap-2.5 p-3 rounded-2xl border transition-all text-left ${
-                      paymentMethod === "cash"
-                        ? "bg-emerald-500/15 border-emerald-500/50 text-white shadow-sm shadow-emerald-500/10"
-                        : "bg-[#101020] border-white/5 text-slate-400 hover:text-slate-200 hover:border-white/10"
-                    }`}
-                  >
-                    <div
-                      className={`w-8 h-8 rounded-xl flex items-center justify-center ${
-                        paymentMethod === "cash"
-                          ? "bg-emerald-500/25 text-emerald-300"
-                          : "bg-white/5 text-slate-400"
-                      }`}
-                    >
-                      <Banknote className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <p className="text-xs font-bold">Cash</p>
-                      <p className="text-[10px] text-slate-400">Cash in Hand</p>
-                    </div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setPaymentMethod("bank")}
-                    className={`flex items-center gap-2.5 p-3 rounded-2xl border transition-all text-left ${
-                      paymentMethod === "bank"
-                        ? "bg-indigo-500/15 border-indigo-500/50 text-white shadow-sm shadow-indigo-500/10"
-                        : "bg-[#101020] border-white/5 text-slate-400 hover:text-slate-200 hover:border-white/10"
-                    }`}
-                  >
-                    <div
-                      className={`w-8 h-8 rounded-xl flex items-center justify-center ${
-                        paymentMethod === "bank"
-                          ? "bg-indigo-500/25 text-indigo-300"
-                          : "bg-white/5 text-slate-400"
-                      }`}
-                    >
-                      <Building2 className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <p className="text-xs font-bold">Bank / UPI</p>
-                      <p className="text-[10px] text-slate-400">Direct Account</p>
-                    </div>
-                  </button>
-                </div>
-              </div>
-
-              {/* Optional Note */}
-              <div>
-                <label htmlFor="paymentNote" className="block text-[11px] font-medium text-slate-400 mb-1.5">
-                  Reference / Note (Optional)
-                </label>
-                <input
-                  id="paymentNote"
-                  type="text"
-                  value={paymentNote}
-                  onChange={(e) => setPaymentNote(e.target.value)}
-                  placeholder="e.g. GPay ref #8291 or Received at front desk"
-                  className="w-full bg-[#101020] border border-white/10 rounded-2xl px-3.5 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500/80 transition-all"
-                />
-              </div>
-
-              {/* Mini Balance Due Strip */}
-              <div className="bg-[#101020] rounded-2xl p-3 border border-white/5 flex items-center justify-between text-xs">
-                <span className="text-slate-400">Remaining Balance:</span>
-                <span
-                  className={`font-bold ${
-                    remainingBalance === 0 ? "text-emerald-400" : "text-amber-400"
-                  }`}
-                >
-                  {remainingBalance === 0 ? "Fully Settled ✓" : formatCurrency(remainingBalance)}
-                </span>
-              </div>
-            </div>
-          )}
-        </section>
-
-        {/* 7. Sticky Bottom Action Bar */}
-        <div className="fixed bottom-0 left-0 right-0 max-w-[480px] mx-auto p-4 bg-[#0f0f1a]/95 backdrop-blur-xl border-t border-white/10 z-40 shadow-[0_-10px_30px_rgba(0,0,0,0.5)]">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-[10px] uppercase tracking-wider font-semibold text-slate-400">
-                Total Rental
-              </p>
+        {/* 6. Sticky Floating Submit Bar */}
+        <div className="fixed bottom-0 left-0 right-0 p-4 bg-[#0e0e1a]/90 backdrop-blur-md border-t border-white/10 z-40">
+          <div className="max-w-lg mx-auto flex items-center gap-3">
+            <div className="flex-1">
+              <p className="text-[10px] text-slate-400 uppercase font-semibold">Total Amount</p>
               <div className="flex items-baseline gap-1.5">
-                <p className="text-xl font-extrabold text-white">
-                  {formatCurrency(totalAmount)}
-                </p>
-                {recordPaymentNow && remainingBalance > 0 && (
-                  <span className="text-[11px] font-semibold text-amber-400">
-                    ({formatCurrency(remainingBalance)} due)
+                <span className="text-xl font-black text-white">{formatCurrency(totalAmount)}</span>
+                {recordPaymentNow && Number(paidAmount) > 0 && (
+                  <span className="text-[11px] text-emerald-400 font-semibold">
+                    ({formatCurrency(paidAmount)} now)
                   </span>
                 )}
               </div>
@@ -997,17 +609,13 @@ export default function VehicleBookingPage() {
 
             <button
               type="submit"
-              disabled={submitting || Boolean(conflictingBooking) || !durationInfo?.isValid}
-              className={`btn-primary rounded-2xl px-6 py-3.5 text-sm font-bold flex items-center gap-2 transition-all ${
-                submitting || Boolean(conflictingBooking) || !durationInfo?.isValid
-                  ? "opacity-50 cursor-not-allowed"
-                  : "hover:shadow-indigo-500/30 active:scale-95"
-              }`}
+              disabled={submitting || (durationInfo !== null && !durationInfo.isValid) || !!conflictingBooking}
+              className="btn-primary rounded-2xl px-6 py-3.5 text-sm font-bold flex items-center gap-2 shadow-lg shadow-indigo-500/30 active:scale-95 transition-transform disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {submitting ? (
                 <>
-                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  <span>Creating...</span>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <span>Reserving...</span>
                 </>
               ) : (
                 <>
