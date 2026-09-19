@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
-export function proxy(request: NextRequest) {
+export function middleware(request: NextRequest) {
   const token = request.cookies.get('token')?.value;
 
-  // Protect /dashboard and any other routes you add later
-  const protectedPaths = ['/dashboard', '/bookings', '/wallet', '/admin', '/vehicles'];
+  // Protect /dashboard, /vehicles, /admin, /profile, /settings, /bookings, /wallet
+  const protectedPaths = ['/dashboard', '/bookings', '/wallet', '/admin', '/vehicles', '/profile', '/settings'];
   const isProtectedPath = protectedPaths.some((path) => 
     request.nextUrl.pathname.startsWith(path)
   );
@@ -34,6 +34,8 @@ export const config = {
     '/wallet/:path*', 
     '/admin/:path*',
     '/vehicles/:path*',
+    '/profile/:path*',
+    '/settings/:path*',
     '/login',
     '/signup'
   ],
