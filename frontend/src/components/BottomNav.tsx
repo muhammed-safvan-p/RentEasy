@@ -7,8 +7,14 @@ import { Home, User, Settings, Calendar, Wallet, Car } from "lucide-react";
 export default function BottomNav() {
   const pathname = usePathname();
 
-  // Don't show bottom nav on login, signup, or admin pages
-  if (pathname === "/login" || pathname === "/signup" || pathname === "/" || pathname?.startsWith("/admin")) {
+  // Don't show bottom nav on login, signup, admin, or booking flow pages
+  if (
+    pathname === "/login" ||
+    pathname === "/signup" ||
+    pathname === "/" ||
+    pathname?.startsWith("/admin") ||
+    pathname?.endsWith("/book")
+  ) {
     return null;
   }
 
@@ -39,12 +45,12 @@ export default function BottomNav() {
   const safeIndex = activeIndex >= 0 ? activeIndex : 0;
 
   return (
-    <div className="fixed bottom-6 max-w-[400px] w-[calc(100%-2rem)] left-1/2 -translate-x-1/2 z-50">
-      <nav className="relative flex items-center h-[76px] rounded-full bg-[#ffffff]/5 border border-white/10 shadow-[0_10px_40px_rgba(0,0,0,0.5)] backdrop-blur-2xl px-2">
+    <div className="fixed bottom-6 max-w-[420px] w-[calc(100%-2rem)] left-1/2 -translate-x-1/2 z-50">
+      <nav className="relative flex items-center h-[72px] rounded-full bg-[#16162a]/90 border border-white/10 shadow-[0_12px_40px_rgba(0,0,0,0.6)] backdrop-blur-2xl px-2">
         
-        {/* Sliding Active Pill (Glassmorphism Highlight) */}
+        {/* Sliding Active Pill */}
         <div 
-          className="absolute left-2 top-2 bottom-2 rounded-full transition-transform duration-500 ease-[cubic-bezier(0.4,0,0.2,1)] bg-gradient-to-b from-[#818cf8]/30 to-[#818cf8]/5 border border-white/20 shadow-[0_0_20px_rgba(129,140,248,0.2)]"
+          className="absolute left-2 top-2 bottom-2 rounded-full transition-transform duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] bg-gradient-to-b from-indigo-500/25 to-indigo-600/10 border border-indigo-400/30 shadow-[0_0_24px_rgba(99,102,241,0.25)]"
           style={{ 
             width: `calc((100% - 16px) / ${links.length})`,
             transform: `translateX(${safeIndex * 100}%)` 
@@ -60,18 +66,18 @@ export default function BottomNav() {
             <Link
               key={link.name}
               href={link.href}
-              className="relative z-10 flex flex-1 flex-col items-center justify-center h-full rounded-full transition-all duration-300 group"
+              className="relative z-10 flex flex-1 flex-col items-center justify-center h-full min-h-[44px] rounded-full transition-all duration-200 active:scale-95 group"
             >
               <Icon 
-                className={`h-[21px] w-[21px] mb-1 transition-all duration-300 ${
+                className={`h-5 w-5 mb-1 transition-all duration-200 ${
                   isActive 
-                    ? "text-white drop-shadow-[0_0_10px_rgba(255,255,255,0.8)]" 
+                    ? "text-white scale-110 drop-shadow-[0_0_8px_rgba(129,140,248,0.8)]" 
                     : "text-slate-400 group-hover:text-slate-200"
                 }`} 
-                strokeWidth={isActive ? 2.5 : 2}
+                strokeWidth={isActive ? 2.5 : 1.75}
               />
-              <span className={`text-[11px] font-medium tracking-wide transition-all duration-300 ${
-                isActive ? "text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.6)]" : "text-slate-400 group-hover:text-slate-200"
+              <span className={`text-[11px] tracking-wide transition-all duration-200 ${
+                isActive ? "text-white font-semibold" : "text-slate-400 font-medium group-hover:text-slate-200"
               }`}>
                 {link.name}
               </span>
