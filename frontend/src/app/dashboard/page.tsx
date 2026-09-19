@@ -5,6 +5,9 @@ import Link from "next/link";
 import { Car, AlertCircle, Plus, X, Copy, Check, Calendar, Wallet, Clock, CheckCircle2, ChevronRight } from "lucide-react";
 import { useRouter } from "next/navigation";
 
+import { useCurrentUser, useUserVehicles } from "@/hooks/useVehicleData";
+import { formatCurrency } from "@/lib/formatters";
+
 interface Vehicle {
   _id: string;
   name: string;
@@ -23,28 +26,27 @@ interface Vehicle {
   };
 }
 
-interface User {
-  _id: string;
-  username: string;
-  role: string;
-}
-
 export default function DashboardPage() {
   const router = useRouter();
-  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const { user, isLoading: userLoading, error: userError } = useCurrentUser();
+  const { vehicles, isLoading: vehiclesLoading, error: vehiclesError } = useUserVehicles();
+
   const [showContactModal, setShowContactModal] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  const formatCurrency = (amount: number = 0) => {
-    return new Intl.NumberFormat("en-IN", {
-      style: "currency",
-      currency: "INR",
-      maximumFractionDigits: 0,
-    }).format(amount);
-  };
+  const loading = userLoading || vehiclesLoading;
+  const error = userError
+    ? userError.message || "Failed to load user info"
+    : vehiclesError
+    ? vehiclesError.message || "Failed to load vehicles"
+    : "";
+
+  // Auth redirect if 401
+  useEffect(() => {
+    if (userError && (userError as any).status === 401) {
+      router.push("/login");
+    }
+  }, [userError, router]);
 
   const formatFriendlyDateTime = (dateStr?: string | Date) => {
     if (!dateStr) return "";
@@ -82,38 +84,6 @@ export default function DashboardPage() {
       console.error("Failed to copy", err);
     }
   };
-
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000";
-        
-        // Fetch user info
-        const userRes = await fetch(`${baseUrl}/api/user/me`, { credentials: "include" });
-        if (!userRes.ok) {
-          if (userRes.status === 401) {
-            router.push("/login");
-            return;
-          }
-          throw new Error("Failed to load user info");
-        }
-        const userData = await userRes.json();
-        setUser(userData);
-
-        // Fetch user vehicles
-        const vehiclesRes = await fetch(`${baseUrl}/api/user/vehicles`, { credentials: "include" });
-        if (!vehiclesRes.ok) throw new Error("Failed to load vehicles");
-        const vehiclesData = await vehiclesRes.json();
-        setVehicles(vehiclesData);
-      } catch (err: unknown) {
-        setError(err instanceof Error ? err.message : "An error occurred");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchData();
-  }, [router]);
 
   return (
     <div className="flex flex-col min-h-screen pb-20">

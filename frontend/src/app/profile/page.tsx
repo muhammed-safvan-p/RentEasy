@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, User as UserIcon, Shield, Calendar, AlertCircle, Eye, EyeOff, Loader2, CheckCircle2 } from "lucide-react";
+import { API_BASE_URL as baseUrl } from "@/lib/api";
 
 interface UserProfile {
   _id: string;
@@ -34,7 +35,6 @@ export default function ProfilePage() {
   useEffect(() => {
     const fetchUser = async () => {
       try {
-        const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000";
         const res = await fetch(`${baseUrl}/api/user/me`, { credentials: "include" });
         if (!res.ok) {
           if (res.status === 401) {
@@ -75,7 +75,6 @@ export default function ProfilePage() {
 
     setPasswordUpdating(true);
     try {
-      const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000";
       const res = await fetch(`${baseUrl}/api/user/password`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },

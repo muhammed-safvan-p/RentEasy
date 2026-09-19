@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, CheckCircle2, Copy, LogOut, Loader2 } from "lucide-react";
+import { API_BASE_URL as baseUrl } from "@/lib/api";
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -22,7 +23,6 @@ export default function SettingsPage() {
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000";
         const res = await fetch(`${baseUrl}/api/user/me`, { credentials: "include" });
         if (!res.ok) {
           if (res.status === 401) {
@@ -57,7 +57,6 @@ export default function SettingsPage() {
   const handleLogout = async () => {
     setIsLoggingOut(true);
     try {
-      const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000";
       await fetch(`${baseUrl}/api/auth/logout`, {
         method: "POST",
         credentials: "include"
