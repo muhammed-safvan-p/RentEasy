@@ -22,14 +22,14 @@ export default function ProfilePage() {
   const [error, setError] = useState("");
 
   // Password State
+  const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [passwordUpdating, setPasswordUpdating] = useState(false);
   const [passwordMessage, setPasswordMessage] = useState<{ type: 'error' | 'success', text: string } | null>(null);
-
-
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -60,8 +60,12 @@ export default function ProfilePage() {
     setPasswordMessage(null);
 
     // Validation
-    if (newPassword.length < 6 || newPassword.length > 8) {
-      setPasswordMessage({ type: 'error', text: 'Password must be between 6 and 8 characters' });
+    if (!currentPassword) {
+      setPasswordMessage({ type: 'error', text: 'Current password is required' });
+      return;
+    }
+    if (newPassword.length < 6) {
+      setPasswordMessage({ type: 'error', text: 'New password must be at least 6 characters' });
       return;
     }
     if (newPassword !== confirmPassword) {
@@ -76,13 +80,14 @@ export default function ProfilePage() {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ newPassword, confirmPassword })
+        body: JSON.stringify({ currentPassword, newPassword, confirmPassword })
       });
 
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Failed to update password");
 
       setPasswordMessage({ type: 'success', text: 'Password updated successfully!' });
+      setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
     } catch (err: any) {
@@ -92,7 +97,7 @@ export default function ProfilePage() {
     }
   };
 
-  const isPasswordValid = newPassword.length >= 6 && newPassword.length <= 8 && newPassword === confirmPassword;
+  const isPasswordValid = currentPassword.length > 0 && newPassword.length >= 6 && newPassword === confirmPassword;
 
   if (loading) {
     return (
@@ -176,6 +181,30 @@ export default function ProfilePage() {
           
           <form onSubmit={handleUpdatePassword} className="space-y-4">
             
+            {/* Current Password */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider ml-1">
+                Current Password
+              </label>
+              <div className="relative">
+                <input 
+                  type={showCurrentPassword ? "text" : "password"}
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  className="w-full bg-[#0f0f20] border border-white/10 rounded-xl px-4 py-3.5 text-white placeholder:text-slate-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all text-sm"
+                  placeholder="Enter current password"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white transition-colors"
+                >
+                  {showCurrentPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
             {/* New Password */}
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider ml-1">
@@ -187,7 +216,7 @@ export default function ProfilePage() {
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   className="w-full bg-[#0f0f20] border border-white/10 rounded-xl px-4 py-3.5 text-white placeholder:text-slate-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all text-sm"
-                  placeholder="6-8 characters"
+                  placeholder="At least 6 characters"
                   required
                 />
                 <button
@@ -200,16 +229,16 @@ export default function ProfilePage() {
               </div>
               {newPassword.length > 0 && (
                 <p className={`text-xs ml-1 flex items-center gap-1 mt-1 ${
-                  newPassword.length >= 6 && newPassword.length <= 8 
+                  newPassword.length >= 6 
                     ? 'text-emerald-400' 
                     : 'text-amber-400'
                 }`}>
-                  {newPassword.length >= 6 && newPassword.length <= 8 ? (
+                  {newPassword.length >= 6 ? (
                     <CheckCircle2 className="w-3 h-3" />
                   ) : (
                     <AlertCircle className="w-3 h-3" />
                   )}
-                  {newPassword.length < 6 ? 'Password is too short (min 6)' : newPassword.length > 8 ? 'Password is too long (max 8)' : 'Valid length (6-8 chars)'}
+                  {newPassword.length < 6 ? 'Password is too short (min 6 characters)' : 'Valid password length'}
                 </p>
               )}
             </div>

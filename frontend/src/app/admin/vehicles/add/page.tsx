@@ -19,6 +19,12 @@ export default function AddVehiclePage() {
     name: "",
     plateNumber: "",
     notes: "",
+    imageUrl: "",
+    fuelType: "Diesel",
+    transmission: "Manual",
+    seatingCapacity: "5",
+    dailyRate: "",
+    hourlyRate: "",
     ownerIds: [] as string[],
     initialCashBalance: "",
     initialBankBalance: "",
@@ -142,6 +148,113 @@ export default function AddVehiclePage() {
                   className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all uppercase text-sm"
                 />
               </div>
+            </div>
+
+            {/* Rental Pricing Rates */}
+            <div className="grid grid-cols-2 gap-6">
+              <div className="col-span-2 sm:col-span-1">
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Daily Rental Rate (₹/day)
+                </label>
+                <div className="relative">
+                  <span className="absolute left-4 top-2.5 text-slate-500">₹</span>
+                  <input
+                    type="number"
+                    name="dailyRate"
+                    min="0"
+                    step="1"
+                    value={formData.dailyRate}
+                    onChange={handleChange}
+                    placeholder="e.g. 2000"
+                    className="w-full pl-8 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all text-sm"
+                  />
+                </div>
+              </div>
+
+              <div className="col-span-2 sm:col-span-1">
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Hourly Rental Rate (₹/hr)
+                </label>
+                <div className="relative">
+                  <span className="absolute left-4 top-2.5 text-slate-500">₹</span>
+                  <input
+                    type="number"
+                    name="hourlyRate"
+                    min="0"
+                    step="1"
+                    value={formData.hourlyRate}
+                    onChange={handleChange}
+                    placeholder="e.g. 200"
+                    className="w-full pl-8 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all text-sm"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Vehicle Specs */}
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Fuel Type
+                </label>
+                <select
+                  name="fuelType"
+                  value={formData.fuelType}
+                  onChange={handleChange}
+                  className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all text-sm"
+                >
+                  <option value="Diesel">Diesel</option>
+                  <option value="Petrol">Petrol</option>
+                  <option value="Electric">Electric</option>
+                  <option value="Hybrid">Hybrid</option>
+                  <option value="CNG">CNG</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Transmission
+                </label>
+                <select
+                  name="transmission"
+                  value={formData.transmission}
+                  onChange={handleChange}
+                  className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all text-sm"
+                >
+                  <option value="Manual">Manual</option>
+                  <option value="Automatic">Automatic</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Seating
+                </label>
+                <input
+                  type="number"
+                  name="seatingCapacity"
+                  min="1"
+                  max="50"
+                  value={formData.seatingCapacity}
+                  onChange={handleChange}
+                  className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all text-sm"
+                />
+              </div>
+            </div>
+
+            {/* Image URL */}
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                Vehicle Image URL
+              </label>
+              <input
+                type="url"
+                name="imageUrl"
+                value={formData.imageUrl}
+                onChange={handleChange}
+                placeholder="https://example.com/vehicle-photo.jpg"
+                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all text-sm"
+              />
             </div>
 
             <div className="grid grid-cols-2 gap-6">

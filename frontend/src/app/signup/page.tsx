@@ -6,15 +6,16 @@ import Link from "next/link";
 
 function validateUsername(value: string): string {
   if (!value) return "";
-  if (!/^[a-zA-Z]+$/.test(value)) return "Username must contain letters only — no numbers or symbols";
-  if (value.length < 4) return `Username too short — ${4 - value.length} more character${4 - value.length > 1 ? "s" : ""} needed`;
+  if (!/^[a-zA-Z0-9_]+$/.test(value)) return "Letters, numbers, and underscores only";
+  if (value.length < 3) return `Username must be at least 3 characters`;
+  if (value.length > 30) return "Username cannot exceed 30 characters";
   return "";
 }
 
 function validatePassword(value: string): string {
   if (!value) return "";
-  if (value.length < 6) return `Password too short — ${6 - value.length} more character${6 - value.length > 1 ? "s" : ""} needed`;
-  if (value.length > 8) return "Password must be 8 characters or less";
+  if (value.length < 6) return `Password must be at least 6 characters`;
+  if (value.length > 128) return "Password cannot exceed 128 characters";
   return "";
 }
 
@@ -123,7 +124,7 @@ export default function SignupPage() {
                     ? "ring-emerald-500/50 focus:ring-emerald-500"
                     : "ring-white/10 focus:ring-indigo-500"
                 }`}
-                placeholder="Letters only, e.g. John"
+                placeholder="e.g. john_doe"
               />
             </div>
             {usernameError && (
@@ -159,7 +160,7 @@ export default function SignupPage() {
                     ? "ring-emerald-500/50 focus:ring-emerald-500"
                     : "ring-white/10 focus:ring-indigo-500"
                 }`}
-                placeholder="6–8 characters"
+                placeholder="Min 6 characters"
               />
               <button
                 type="button"
@@ -186,22 +187,22 @@ export default function SignupPage() {
             {password && (
               <div className="mt-2">
                 <div className="flex gap-1">
-                  {[...Array(8)].map((_, i) => (
+                  {[...Array(6)].map((_, i) => (
                     <div
                       key={i}
                       className={`h-1 flex-1 rounded-full transition-all duration-300 ${
                         i < password.length
                           ? password.length < 6
                             ? "bg-rose-500"
-                            : password.length <= 8
-                            ? "bg-emerald-500"
-                            : "bg-amber-500"
+                            : "bg-emerald-500"
                           : "bg-white/10"
                       }`}
                     />
                   ))}
                 </div>
-                <p className="mt-1 text-xs text-slate-500">{password.length}/8 characters</p>
+                <p className="mt-1 text-xs text-slate-500">
+                  {password.length < 6 ? `${password.length}/6 characters (minimum 6)` : `${password.length} characters (valid)`}
+                </p>
               </div>
             )}
 

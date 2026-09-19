@@ -47,11 +47,16 @@ interface WalletData {
 interface Booking {
   _id: string;
   customerName: string;
-  startDate: string;
-  endDate: string;
-  isPaid: boolean;
+  startDate?: string;
+  endDate?: string;
+  startDateTime?: string;
+  endDateTime?: string;
+  isPaid?: boolean;
   paid?: boolean;
   amount?: number;
+  totalAmount?: number;
+  paidAmount?: number;
+  balanceAmount?: number;
   paymentMethod?: "cash" | "bank";
 }
 
@@ -226,8 +231,12 @@ export default function VehicleDetailPage() {
     const monthEnd = new Date(year, month + 1, 0, 23, 59, 59, 999);
 
     for (const b of bookings) {
-      const start = new Date(b.startDate);
-      const end = new Date(b.endDate);
+      const sStr = b.startDate || b.startDateTime;
+      const eStr = b.endDate || b.endDateTime;
+      if (!sStr || !eStr) continue;
+
+      const start = new Date(sStr);
+      const end = new Date(eStr);
 
       // Clip start and end to the visible month
       const startClipped = new Date(Math.max(start.getTime(), monthStart.getTime()));
@@ -249,7 +258,8 @@ export default function VehicleDetailPage() {
   }, [bookings, currentMonth]);
 
   // Booking duration in days
-  const getBookingDurationDays = (startDate: string, endDate: string) => {
+  const getBookingDurationDays = (startDate?: string, endDate?: string) => {
+    if (!startDate || !endDate) return 1;
     const start = new Date(startDate);
     const end = new Date(endDate);
     return Math.ceil(Math.abs(end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
@@ -264,8 +274,11 @@ export default function VehicleDetailPage() {
     dayEnd.setHours(23, 59, 59, 999);
 
     const match = bookings.find((b) => {
-      const bStart = new Date(b.startDate);
-      const bEnd = new Date(b.endDate);
+      const sStr = b.startDate || b.startDateTime;
+      const eStr = b.endDate || b.endDateTime;
+      if (!sStr || !eStr) return false;
+      const bStart = new Date(sStr);
+      const bEnd = new Date(eStr);
       return bStart <= dayEnd && bEnd >= dayStart;
     });
 
@@ -582,8 +595,8 @@ export default function VehicleDetailPage() {
                         <CalendarDays className="w-3.5 h-3.5 text-slate-500" />Duration
                       </span>
                       <span className="text-slate-200 text-right">
-                        {formatDateNice(selectedBooking.startDate)} &ndash; {formatDateNice(selectedBooking.endDate)}
-                        <span className="text-slate-500"> &middot; {getBookingDurationDays(selectedBooking.startDate, selectedBooking.endDate)}d</span>
+                        {formatDateNice(selectedBooking.startDate || selectedBooking.startDateTime || '')} &ndash; {formatDateNice(selectedBooking.endDate || selectedBooking.endDateTime || '')}
+                        <span className="text-slate-500"> &middot; {getBookingDurationDays(selectedBooking.startDate || selectedBooking.startDateTime, selectedBooking.endDate || selectedBooking.endDateTime)}d</span>
                       </span>
                     </div>
                     {selectedBooking.amount !== undefined && (
