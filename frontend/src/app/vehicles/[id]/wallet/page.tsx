@@ -18,6 +18,11 @@ import {
   X,
   Loader2,
   Calendar,
+  ArrowDownLeft,
+  ArrowUpRight,
+  Trash2,
+  Receipt,
+  Scale,
 } from "lucide-react";
 
 interface Vehicle {
@@ -67,6 +72,10 @@ export default function VehicleWalletPage() {
   const [errorStatus, setErrorStatus] = useState<number | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
 
+  // Details Modal State
+  const [selectedTx, setSelectedTx] = useState<WalletTransaction | null>(null);
+  const [deletingTx, setDeletingTx] = useState(false);
+
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [formType, setFormType] = useState<"income" | "expense">("income");
@@ -106,6 +115,29 @@ export default function VehicleWalletPage() {
       day: "numeric",
       month: "short",
       year: "numeric",
+    });
+  };
+
+  const formatTimeNice = (dateStr: string) => {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return "";
+    return d.toLocaleTimeString("en-IN", {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
+  };
+
+  const formatFullDateTime = (dateStr: string) => {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return "";
+    return d.toLocaleDateString("en-IN", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
     });
   };
 
@@ -251,6 +283,98 @@ export default function VehicleWalletPage() {
     if (filter === "all") return transactions;
     return transactions.filter((t) => t.type === filter);
   }, [transactions, filter]);
+
+  // Grouped transactions by date (descending)
+  const groupedTransactions = useMemo(() => {
+    const groups: { [key: string]: WalletTransaction[] } = {};
+
+    for (const tx of filteredTransactions) {
+      const raw = (tx.transactionDate || tx.createdAt || "").split("T")[0] || "Unknown";
+      if (!groups[raw]) {
+        groups[raw] = [];
+      }
+      groups[raw].push(tx);
+    }
+
+    const sortedKeys = Object.keys(groups).sort((a, b) => b.localeCompare(a));
+
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    
+    const yDate = new Date(now);
+    yDate.setDate(now.getDate() - 1);
+    const yesterdayStr = `${yDate.getFullYear()}-${String(yDate.getMonth() + 1).padStart(2, "0")}-${String(yDate.getDate()).padStart(2, "0")}`;
+
+    return sortedKeys.map((key) => {
+      let dateLabel = key;
+      if (key === todayStr) {
+        dateLabel = "Today";
+      } else if (key === yesterdayStr) {
+        dateLabel = "Yesterday";
+      } else if (key !== "Unknown") {
+        const d = new Date(key + "T00:00:00");
+        dateLabel = d.toLocaleDateString("en-IN", {
+          day: "numeric",
+          month: "short",
+          year: "numeric",
+        });
+      }
+
+      return {
+        dateKey: key,
+        dateLabel,
+        transactions: groups[key],
+      };
+    });
+  }, [filteredTransactions]);
+
+  // Delete transaction handler (for manual entries)
+  const handleDeleteTransaction = async (txId: string) => {
+    if (!confirm("Are you sure you want to delete this transaction? This will automatically update the wallet balances.")) {
+      return;
+    }
+
+    setDeletingTx(true);
+    try {
+      const res = await fetch(`${baseUrl}/api/vehicles/${id}/wallet/transactions/${txId}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.message || "Failed to delete transaction");
+      }
+
+      setSelectedTx(null);
+
+      // Re-fetch overall balance & current view transactions
+      const monthParam = formatMonthParam(selectedMonth);
+      const [walletRes, txRes] = await Promise.all([
+        fetch(`${baseUrl}/api/vehicles/${id}/wallet`, { credentials: "include" }),
+        fetch(
+          `${baseUrl}/api/vehicles/${id}/wallet/transactions?month=${monthParam}`,
+          { credentials: "include" }
+        ),
+      ]);
+
+      if (walletRes.ok) {
+        const walletData = await walletRes.json();
+        setWallet(walletData.wallet || walletData);
+      }
+
+      if (txRes.ok) {
+        const txData = await txRes.json();
+        setTransactions(txData.transactions || []);
+        setMonthIncome(txData.monthIncome || 0);
+        setMonthExpense(txData.monthExpense || 0);
+      }
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Error deleting transaction");
+    } finally {
+      setDeletingTx(false);
+    }
+  };
 
   // Open modal handler
   const handleOpenModal = () => {
@@ -532,149 +656,220 @@ export default function VehicleWalletPage() {
         </button>
       </div>
 
-      {/* 3. Month Summary Pills */}
-      <div className="grid grid-cols-2 gap-3 mb-5">
-        <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-3.5 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-emerald-500/20 flex items-center justify-center text-emerald-400 shrink-0">
-            <TrendingUp className="w-5 h-5" />
+      {/* 3. Month Summary: Income, Expense, Net Flow */}
+      <div className="grid grid-cols-3 gap-2.5 mb-5">
+        <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-3 flex flex-col justify-between shadow-sm">
+          <div className="flex items-center gap-1.5 text-emerald-400 text-xs mb-1">
+            <TrendingUp className="w-3.5 h-3.5" />
+            <span className="font-semibold text-[11px] uppercase tracking-wider">Income</span>
           </div>
-          <div className="min-w-0">
-            <p className="text-[11px] font-semibold text-emerald-300/80 uppercase tracking-wider">Income</p>
-            <p className="text-base font-black text-emerald-400 truncate">
-              +{formatCurrency(monthIncome)}
-            </p>
-          </div>
+          <p className="text-sm sm:text-base font-black text-emerald-400 truncate">
+            +{formatCurrency(monthIncome)}
+          </p>
         </div>
 
-        <div className="bg-rose-500/10 border border-rose-500/20 rounded-2xl p-3.5 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-rose-500/20 flex items-center justify-center text-rose-400 shrink-0">
-            <TrendingDown className="w-5 h-5" />
+        <div className="bg-rose-500/10 border border-rose-500/20 rounded-2xl p-3 flex flex-col justify-between shadow-sm">
+          <div className="flex items-center gap-1.5 text-rose-400 text-xs mb-1">
+            <TrendingDown className="w-3.5 h-3.5" />
+            <span className="font-semibold text-[11px] uppercase tracking-wider">Expense</span>
           </div>
-          <div className="min-w-0">
-            <p className="text-[11px] font-semibold text-rose-300/80 uppercase tracking-wider">Expense</p>
-            <p className="text-base font-black text-rose-400 truncate">
-              -{formatCurrency(monthExpense)}
-            </p>
+          <p className="text-sm sm:text-base font-black text-rose-400 truncate">
+            -{formatCurrency(monthExpense)}
+          </p>
+        </div>
+
+        <div className={`rounded-2xl p-3 border flex flex-col justify-between shadow-sm ${
+          (monthIncome - monthExpense) >= 0 
+            ? "bg-indigo-500/10 border-indigo-500/20"
+            : "bg-amber-500/10 border-amber-500/20"
+        }`}>
+          <div className={`flex items-center gap-1.5 text-xs mb-1 ${
+            (monthIncome - monthExpense) >= 0 ? "text-indigo-400" : "text-amber-400"
+          }`}>
+            <Scale className="w-3.5 h-3.5" />
+            <span className="font-semibold text-[11px] uppercase tracking-wider">Balance</span>
           </div>
+          <p className={`text-sm sm:text-base font-black truncate ${
+            (monthIncome - monthExpense) >= 0 ? "text-indigo-300" : "text-amber-400"
+          }`}>
+            {(monthIncome - monthExpense) >= 0 ? "+" : ""}
+            {formatCurrency(monthIncome - monthExpense)}
+          </p>
         </div>
       </div>
 
       {/* 4. Filter Tabs */}
-      <div className="flex items-center p-1 bg-[#1a1a2e] border border-white/10 rounded-xl mb-4 text-xs font-semibold">
+      <div className="flex items-center p-1 bg-[#1a1a2e] border border-white/10 rounded-2xl mb-4 text-xs font-semibold shadow-md">
         <button
           onClick={() => setFilter("all")}
-          className={`flex-1 py-2 rounded-lg transition-all text-center ${
+          className={`flex-1 py-2 rounded-xl transition-all text-center flex items-center justify-center gap-1.5 ${
             filter === "all"
-              ? "bg-indigo-600 text-white shadow-md"
+              ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/30"
               : "text-slate-400 hover:text-white"
           }`}
         >
-          All ({transactions.length})
+          <span>All</span>
+          <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+            filter === "all" ? "bg-white/20 text-white" : "bg-white/5 text-slate-400"
+          }`}>
+            {transactions.length}
+          </span>
         </button>
         <button
           onClick={() => setFilter("income")}
-          className={`flex-1 py-2 rounded-lg transition-all text-center ${
+          className={`flex-1 py-2 rounded-xl transition-all text-center flex items-center justify-center gap-1.5 ${
             filter === "income"
-              ? "bg-emerald-600 text-white shadow-md"
+              ? "bg-emerald-600 text-white shadow-md shadow-emerald-600/30"
               : "text-slate-400 hover:text-white"
           }`}
         >
-          Income ({transactions.filter((t) => t.type === "income").length})
+          <span>Income</span>
+          <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+            filter === "income" ? "bg-white/20 text-white" : "bg-white/5 text-slate-400"
+          }`}>
+            {transactions.filter((t) => t.type === "income").length}
+          </span>
         </button>
         <button
           onClick={() => setFilter("expense")}
-          className={`flex-1 py-2 rounded-lg transition-all text-center ${
+          className={`flex-1 py-2 rounded-xl transition-all text-center flex items-center justify-center gap-1.5 ${
             filter === "expense"
-              ? "bg-rose-600 text-white shadow-md"
+              ? "bg-rose-600 text-white shadow-md shadow-rose-600/30"
               : "text-slate-400 hover:text-white"
           }`}
         >
-          Expense ({transactions.filter((t) => t.type === "expense").length})
+          <span>Expense</span>
+          <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+            filter === "expense" ? "bg-white/20 text-white" : "bg-white/5 text-slate-400"
+          }`}>
+            {transactions.filter((t) => t.type === "expense").length}
+          </span>
         </button>
       </div>
 
-      {/* 5. Transaction List */}
-      <div className="flex-1 space-y-3">
+      {/* 5. Transaction List (Grouped by Date) */}
+      <div className="flex-1 space-y-5">
         {txLoading ? (
           <div className="space-y-3 py-2">
             <div className="h-20 rounded-2xl bg-[#1a1a2e] animate-pulse" />
             <div className="h-20 rounded-2xl bg-[#1a1a2e] animate-pulse" />
+            <div className="h-20 rounded-2xl bg-[#1a1a2e] animate-pulse" />
           </div>
-        ) : filteredTransactions.length === 0 ? (
-          <div className="bg-[#1a1a2e]/50 border border-white/5 rounded-3xl p-8 text-center my-6 flex flex-col items-center justify-center">
-            <div className="w-12 h-12 rounded-2xl bg-white/5 flex items-center justify-center text-slate-500 mb-3">
+        ) : groupedTransactions.length === 0 ? (
+          <div className="bg-[#1a1a2e]/60 border border-white/5 rounded-3xl p-8 text-center my-6 flex flex-col items-center justify-center shadow-lg">
+            <div className="w-14 h-14 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 mb-3 shadow-inner">
               <Wallet className="w-6 h-6" />
             </div>
-            <p className="text-sm font-semibold text-slate-300 mb-1">
+            <p className="text-sm font-bold text-white mb-1">
               {filter === "all"
                 ? `No transactions in ${formatMonthDisplay(selectedMonth)}`
                 : `No ${filter} transactions in ${formatMonthDisplay(selectedMonth)}`}
             </p>
-            <p className="text-xs text-slate-500 max-w-xs">
-              Transactions logged manually or automatically from bookings will appear here.
+            <p className="text-xs text-slate-400 max-w-xs mb-4">
+              {filter === "all"
+                ? "No financial activity recorded yet for this month."
+                : `There are no ${filter} records found for this period.`}
             </p>
+            <button
+              onClick={handleOpenModal}
+              className="px-4 py-2 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 text-xs font-semibold flex items-center gap-1.5 transition-all"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Add First Transaction
+            </button>
           </div>
         ) : (
-          filteredTransactions.map((tx) => {
-            const isIncome = tx.type === "income";
-            return (
-              <div
-                key={tx._id}
-                className={`bg-[#1a1a2e] rounded-2xl p-4 border border-white/10 shadow-sm relative overflow-hidden transition-all hover:border-white/20 ${
-                  isIncome ? "border-l-4 border-l-emerald-500" : "border-l-4 border-l-rose-500"
-                }`}
-              >
-                {/* Top Row: Date, Source Tag, Amount */}
-                <div className="flex items-center justify-between mb-1.5">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-semibold text-slate-300">
-                      {formatDateNice(tx.transactionDate || tx.createdAt)}
-                    </span>
-                    {tx.source === "booking" && (
-                      <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-indigo-500/15 text-indigo-400 border border-indigo-500/20">
-                        Booking
-                      </span>
-                    )}
-                  </div>
-
-                  <span
-                    className={`text-base font-black tracking-tight ${
-                      isIncome ? "text-emerald-400" : "text-rose-400"
-                    }`}
-                  >
-                    {isIncome ? "+" : "-"}
-                    {formatCurrency(tx.amount)}
-                  </span>
-                </div>
-
-                {/* Middle Row: Note */}
-                <p className="text-sm text-slate-200 mb-2.5 break-words font-medium">
-                  {tx.note || <span className="text-slate-500 italic text-xs">No note</span>}
-                </p>
-
-                {/* Bottom Row: Payment method pill + createdBy */}
-                <div className="flex items-center justify-between text-[11px] text-slate-400 pt-2 border-t border-white/5">
-                  <div className="flex items-center gap-1.5">
-                    {tx.paymentMethod === "cash" ? (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium">
-                        <Banknote className="w-3 h-3" />
-                        Cash
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 font-medium">
-                        <Building2 className="w-3 h-3" />
-                        Bank
-                      </span>
-                    )}
-                  </div>
-
-                  <span className="text-slate-500 font-medium">
-                    Added by {tx.createdBy?.username || "Owner"}
-                  </span>
-                </div>
+          groupedTransactions.map((group) => (
+            <div key={group.dateKey} className="space-y-2.5">
+              {/* Date Section Header */}
+              <div className="flex items-center px-1 text-xs">
+                <span className="font-semibold text-slate-400 tracking-wide flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-indigo-400/70"></span>
+                  {group.dateLabel}
+                </span>
               </div>
-            );
-          })
+
+              {/* Transactions in this date group */}
+              <div className="space-y-2">
+                {group.transactions.map((tx) => {
+                  const isIncome = tx.type === "income";
+                  const displayNote = tx.note || (isIncome ? "Income Received" : "Expense Recorded");
+
+                  return (
+                    <div
+                      key={tx._id}
+                      onClick={() => setSelectedTx(tx)}
+                      className="bg-[#1a1a2e] hover:bg-[#202038] cursor-pointer rounded-2xl p-3.5 border border-white/5 hover:border-white/15 transition-all active:scale-[0.99] flex items-center justify-between gap-3 shadow-md group"
+                    >
+                      {/* Left: Direction Icon */}
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <div
+                          className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 border transition-transform group-hover:scale-105 ${
+                            isIncome
+                              ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                              : "bg-rose-500/10 text-rose-400 border-rose-500/20"
+                          }`}
+                        >
+                          {isIncome ? (
+                            <ArrowDownLeft className="w-5 h-5" />
+                          ) : (
+                            <ArrowUpRight className="w-5 h-5" />
+                          )}
+                        </div>
+
+                        {/* Title, Subtitle, Tags */}
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-bold text-white truncate group-hover:text-indigo-200 transition-colors">
+                            {displayNote}
+                          </p>
+
+                          <div className="flex items-center flex-wrap gap-x-2 gap-y-0.5 text-[11px] text-slate-400 mt-1">
+                            {/* Payment Method Badge */}
+                            <span className="inline-flex items-center gap-1 font-medium text-slate-300">
+                              {tx.paymentMethod === "cash" ? (
+                                <>
+                                  <Banknote className="w-3 h-3 text-emerald-400" />
+                                  Cash
+                                </>
+                              ) : (
+                                <>
+                                  <Building2 className="w-3 h-3 text-indigo-400" />
+                                  Bank
+                                </>
+                              )}
+                            </span>
+
+                            <span>•</span>
+                            <span className="text-slate-500">
+                              {formatTimeNice(tx.transactionDate || tx.createdAt)}
+                            </span>
+
+                            <span>•</span>
+                            <span className="text-slate-400 truncate">
+                              Recorded by - <span className="text-slate-200 font-semibold">{tx.createdBy?.username || "Owner"}</span>
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Right: Amount & Indicator */}
+                      <div className="flex items-center gap-2 text-right shrink-0">
+                        <span
+                          className={`text-base font-black tracking-tight ${
+                            isIncome ? "text-emerald-400" : "text-rose-400"
+                          }`}
+                        >
+                          {isIncome ? "+" : "-"}
+                          {formatCurrency(tx.amount)}
+                        </span>
+                        <ChevronRight className="w-4 h-4 text-slate-600 group-hover:text-slate-300 group-hover:translate-x-0.5 transition-all" />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))
         )}
       </div>
 
@@ -864,6 +1059,118 @@ export default function VehicleWalletPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* 8. Transaction Details Modal */}
+      {selectedTx && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200">
+          <div
+            className="bg-[#16162a] border border-white/10 rounded-3xl w-full max-w-md p-6 shadow-2xl relative overflow-hidden"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="tx-modal-title"
+          >
+            {/* Modal Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-white/10 mb-4">
+              <span id="tx-modal-title" className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                <Receipt className="w-4 h-4 text-indigo-400" />
+                Transaction Details
+              </span>
+              <button
+                onClick={() => setSelectedTx(null)}
+                className="w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-slate-400 hover:text-white transition-colors"
+                aria-label="Close modal"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Amount Hero */}
+            <div className="text-center py-4 bg-black/25 rounded-2xl border border-white/5 mb-4">
+              <span
+                className={`text-3xl font-black tracking-tight ${
+                  selectedTx.type === "income" ? "text-emerald-400" : "text-rose-400"
+                }`}
+              >
+                {selectedTx.type === "income" ? "+" : "-"}
+                {formatCurrency(selectedTx.amount)}
+              </span>
+              <div className="mt-2 flex items-center justify-center gap-1.5 text-xs font-semibold">
+                <span
+                  className={`px-2.5 py-0.5 rounded-full font-medium ${
+                    selectedTx.type === "income"
+                      ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20"
+                      : "bg-rose-500/15 text-rose-300 border border-rose-500/20"
+                  }`}
+                >
+                  {selectedTx.type === "income" ? "Income" : "Expense"}
+                </span>
+                <span className="px-2.5 py-0.5 rounded-full bg-white/5 text-slate-300 border border-white/10 uppercase text-[10px] font-medium">
+                  {selectedTx.paymentMethod}
+                </span>
+              </div>
+            </div>
+
+            {/* Metadata Rows */}
+            <div className="space-y-2.5 text-xs mb-6">
+              <div className="flex items-center justify-between p-2.5 bg-black/20 rounded-xl border border-white/5">
+                <span className="text-slate-400">Description / Note</span>
+                <span className="font-semibold text-white max-w-[200px] text-right truncate">
+                  {selectedTx.note || "No note recorded"}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between p-2.5 bg-black/20 rounded-xl border border-white/5">
+                <span className="text-slate-400">Date & Time</span>
+                <span className="font-semibold text-slate-200">
+                  {formatFullDateTime(selectedTx.transactionDate || selectedTx.createdAt)}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between p-2.5 bg-black/20 rounded-xl border border-white/5">
+                <span className="text-slate-400">Recorded By</span>
+                <span className="font-semibold text-slate-200">
+                  {selectedTx.createdBy?.username || "Vehicle Owner"}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between p-2.5 bg-black/20 rounded-xl border border-white/5">
+                <span className="text-slate-400">Origin / Source</span>
+                <span className="font-semibold text-slate-200">
+                  {selectedTx.source === "booking" ? "Automatic Booking" : "Manual Entry"}
+                </span>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setSelectedTx(null)}
+                className="flex-1 py-2.5 rounded-xl border border-white/10 text-slate-300 hover:bg-white/5 font-semibold text-xs transition-colors"
+              >
+                Close
+              </button>
+
+              {/* Allow delete for manual entries */}
+              {selectedTx.source === "manual" && (
+                <button
+                  type="button"
+                  onClick={() => handleDeleteTransaction(selectedTx._id)}
+                  disabled={deletingTx}
+                  className="px-4 py-2.5 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 font-semibold text-xs flex items-center justify-center gap-1.5 transition-all disabled:opacity-50"
+                >
+                  {deletingTx ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Trash2 className="w-3.5 h-3.5" />
+                  )}
+                  <span>Delete Entry</span>
+                </button>
+              )}
+            </div>
           </div>
         </div>
       )}
