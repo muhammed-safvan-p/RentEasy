@@ -1,3 +1,5 @@
+const bcrypt = require('bcryptjs');
+const Vehicle = require('../models/Vehicle');
 const vehicleRepository = require('../repositories/vehicleRepository');
 const userRepository = require('../repositories/userRepository');
 const walletRepository = require('../repositories/walletRepository');
@@ -31,8 +33,6 @@ class AdminService {
       fuelType,
       transmission,
       seatingCapacity,
-      dailyRate,
-      hourlyRate,
       initialCashBalance,
       initialBankBalance,
     } = vehicleDataInput;
@@ -59,18 +59,6 @@ class AdminService {
       const parsedCapacity = Number(seatingCapacity);
       if (!isNaN(parsedCapacity) && parsedCapacity > 0) {
         vehicleData.seatingCapacity = parsedCapacity;
-      }
-    }
-    if (dailyRate !== undefined && dailyRate !== '') {
-      const parsedDaily = Number(dailyRate);
-      if (!isNaN(parsedDaily) && parsedDaily >= 0) {
-        vehicleData.dailyRate = parsedDaily;
-      }
-    }
-    if (hourlyRate !== undefined && hourlyRate !== '') {
-      const parsedHourly = Number(hourlyRate);
-      if (!isNaN(parsedHourly) && parsedHourly >= 0) {
-        vehicleData.hourlyRate = parsedHourly;
       }
     }
 
@@ -127,8 +115,6 @@ class AdminService {
       fuelType,
       transmission,
       seatingCapacity,
-      dailyRate,
-      hourlyRate,
     } = updateDataInput;
 
     const vehicle = await vehicleRepository.findById(id);
@@ -159,18 +145,6 @@ class AdminService {
         vehicle.seatingCapacity = parsedCapacity;
       }
     }
-    if (dailyRate !== undefined && dailyRate !== '') {
-      const parsedDaily = Number(dailyRate);
-      if (!isNaN(parsedDaily) && parsedDaily >= 0) {
-        vehicle.dailyRate = parsedDaily;
-      }
-    }
-    if (hourlyRate !== undefined && hourlyRate !== '') {
-      const parsedHourly = Number(hourlyRate);
-      if (!isNaN(parsedHourly) && parsedHourly >= 0) {
-        vehicle.hourlyRate = parsedHourly;
-      }
-    }
 
     return await vehicleRepository.save(vehicle);
   }
@@ -185,12 +159,151 @@ class AdminService {
     return { isActive: vehicle.isActive, message: `Vehicle ${vehicle.isActive ? 'activated' : 'deactivated'}` };
   }
 
+  async deleteVehicle(id) {
+    const vehicle = await vehicleRepository.findById(id);
+    if (!vehicle) {
+      throw new AppError('Vehicle not found', 404);
+    }
+
+    const Booking = require('../models/Booking');
+    const activeBookingsCount = await Booking.countDocuments({
+      vehicleId: id,
+      status: { $in: ['confirmed', 'in_progress', 'payment_pending'] },
+    });
+    if (activeBookingsCount > 0) {
+      throw new AppError(
+        `Cannot delete vehicle with ${activeBookingsCount} active booking(s). Please complete or cancel active bookings first.`,
+        400
+      );
+    }
+
+    await vehicleRepository.deleteById(id);
+    return { message: 'Vehicle deleted successfully' };
+  }
+
   async getUsersList() {
     return await userRepository.findAll({}, 'username _id');
   }
 
-  async getUsers() {
-    return await userRepository.findAll({}, '-password', { createdAt: -1 });
+  async getUsers(filter = {}) {
+    const users = await userRepository.findAll(filter, '-password', { createdAt: -1 });
+    
+    // Count associated vehicles for each user
+    const usersWithStats = await Promise.all(
+      users.map(async (u) => {
+        const vehicleCount = await Vehicle.countDocuments({ ownerIds: u._id });
+        return {
+          _id: u._id,
+          username: u.username,
+          role: u.role,
+          isBlock: u.isBlock,
+          vehicleCount,
+          createdAt: u.createdAt,
+          updatedAt: u.updatedAt,
+        };
+      })
+    );
+
+    return usersWithStats;
+  }
+
+  async createUser(userData) {
+    const { username, password, role, isBlock } = userData;
+    const trimmedUsername = username.trim();
+
+    const existing = await userRepository.findByUsername(trimmedUsername);
+    if (existing) {
+      throw new AppError('Username already exists', 400);
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+
+    const user = await userRepository.createUser({
+      username: trimmedUsername,
+      password: hashedPassword,
+      role: role || 'user',
+      isBlock: isBlock || false,
+    });
+
+    return {
+      _id: user._id,
+      username: user.username,
+      role: user.role,
+      isBlock: user.isBlock,
+      vehicleCount: 0,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+    };
+  }
+
+  async updateUser(userId, updateData, currentAdminId) {
+    const { username, password, role, isBlock } = updateData;
+
+    const user = await userRepository.findById(userId);
+    if (!user) {
+      throw new AppError('User not found', 404);
+    }
+
+    if (username !== undefined) {
+      const trimmedUsername = username.trim();
+      if (trimmedUsername !== user.username) {
+        const existing = await userRepository.findByUsername(trimmedUsername);
+        if (existing && existing._id.toString() !== user._id.toString()) {
+          throw new AppError('Username already exists', 400);
+        }
+        user.username = trimmedUsername;
+      }
+    }
+
+    if (password && password.trim() !== '') {
+      const salt = await bcrypt.genSalt(10);
+      user.password = await bcrypt.hash(password, salt);
+    }
+
+    if (role !== undefined) {
+      if (user._id.toString() === currentAdminId.toString() && role !== 'admin') {
+        throw new AppError('You cannot demote your own admin account', 400);
+      }
+      user.role = role;
+    }
+
+    if (isBlock !== undefined) {
+      if (user._id.toString() === currentAdminId.toString() && isBlock) {
+        throw new AppError('You cannot block your own account', 400);
+      }
+      user.isBlock = isBlock;
+    }
+
+    const updatedUser = await userRepository.save(user);
+    const vehicleCount = await Vehicle.countDocuments({ ownerIds: updatedUser._id });
+
+    return {
+      _id: updatedUser._id,
+      username: updatedUser.username,
+      role: updatedUser.role,
+      isBlock: updatedUser.isBlock,
+      vehicleCount,
+      createdAt: updatedUser.createdAt,
+      updatedAt: updatedUser.updatedAt,
+    };
+  }
+
+  async deleteUser(userId, currentAdminId) {
+    if (userId.toString() === currentAdminId.toString()) {
+      throw new AppError('You cannot delete your own account', 400);
+    }
+
+    const user = await userRepository.findById(userId);
+    if (!user) {
+      throw new AppError('User not found', 404);
+    }
+
+    // Pull user from any vehicles where they are assigned as co-owner
+    await Vehicle.updateMany({ ownerIds: user._id }, { $pull: { ownerIds: user._id } });
+
+    await userRepository.deleteById(userId);
+    return { message: 'User deleted successfully' };
   }
 
   async toggleUserBlock(userId, currentAdminId) {

@@ -32,6 +32,10 @@ class UserRepository {
   async save(user, session = null) {
     return await user.save({ session: session || undefined });
   }
+
+  async deleteById(id, session = null) {
+    return await User.findByIdAndDelete(id, { session: session || undefined });
+  }
 }
 
 module.exports = new UserRepository();

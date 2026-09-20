@@ -30,8 +30,6 @@ const addVehicleSchema = Joi.object({
   fuelType: Joi.string().valid('Petrol', 'Diesel', 'Electric', 'Hybrid', 'CNG').default('Diesel'),
   transmission: Joi.string().valid('Manual', 'Automatic').default('Manual'),
   seatingCapacity: Joi.number().integer().min(1).max(100).default(5),
-  dailyRate: Joi.number().min(0).default(0),
-  hourlyRate: Joi.number().min(0).default(0),
   initialCashBalance: Joi.number().min(0).default(0),
   initialBankBalance: Joi.number().min(0).default(0),
 });
@@ -51,8 +49,34 @@ const updateVehicleSchema = Joi.object({
   fuelType: Joi.string().valid('Petrol', 'Diesel', 'Electric', 'Hybrid', 'CNG').optional(),
   transmission: Joi.string().valid('Manual', 'Automatic').optional(),
   seatingCapacity: Joi.number().integer().min(1).max(100).optional(),
-  dailyRate: Joi.number().min(0).optional(),
-  hourlyRate: Joi.number().min(0).optional(),
+});
+
+const createUserSchema = Joi.object({
+  username: Joi.string().trim().min(3).max(30).required().messages({
+    'string.empty': 'Username is required',
+    'string.min': 'Username must be at least 3 characters',
+    'string.max': 'Username cannot exceed 30 characters',
+    'any.required': 'Username is required',
+  }),
+  password: Joi.string().min(6).required().messages({
+    'string.empty': 'Password is required',
+    'string.min': 'Password must be at least 6 characters',
+    'any.required': 'Password is required',
+  }),
+  role: Joi.string().valid('user', 'admin').default('user'),
+  isBlock: Joi.boolean().default(false),
+});
+
+const updateUserSchema = Joi.object({
+  username: Joi.string().trim().min(3).max(30).optional().messages({
+    'string.min': 'Username must be at least 3 characters',
+    'string.max': 'Username cannot exceed 30 characters',
+  }),
+  password: Joi.string().min(6).allow('', null).optional().messages({
+    'string.min': 'Password must be at least 6 characters',
+  }),
+  role: Joi.string().valid('user', 'admin').optional(),
+  isBlock: Joi.boolean().optional(),
 });
 
 module.exports = {
@@ -60,4 +84,6 @@ module.exports = {
   adminUserParamSchema,
   addVehicleSchema,
   updateVehicleSchema,
+  createUserSchema,
+  updateUserSchema,
 };

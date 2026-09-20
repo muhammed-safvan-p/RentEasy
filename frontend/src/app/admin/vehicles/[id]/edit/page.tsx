@@ -26,8 +26,6 @@ export default function EditVehiclePage() {
     fuelType: "Diesel",
     transmission: "Manual",
     seatingCapacity: "5",
-    dailyRate: "",
-    hourlyRate: "",
     ownerIds: [] as string[],
   });
 
@@ -61,8 +59,6 @@ export default function EditVehiclePage() {
           fuelType: vehicleData.fuelType || "Diesel",
           transmission: vehicleData.transmission || "Manual",
           seatingCapacity: vehicleData.seatingCapacity !== undefined ? String(vehicleData.seatingCapacity) : "5",
-          dailyRate: vehicleData.dailyRate !== undefined ? String(vehicleData.dailyRate) : "",
-          hourlyRate: vehicleData.hourlyRate !== undefined ? String(vehicleData.hourlyRate) : "",
           ownerIds: vehicleData.ownerIds ? vehicleData.ownerIds.map((o: any) => o._id || o) : [],
         });
       } catch (err: any) {
@@ -181,47 +177,6 @@ export default function EditVehiclePage() {
                   placeholder="e.g. MH 12 AB 1234"
                   className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all uppercase text-sm"
                 />
-              </div>
-            </div>
-
-            {/* Rental Pricing Rates */}
-            <div className="grid grid-cols-2 gap-6">
-              <div className="col-span-2 sm:col-span-1">
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Daily Rental Rate (₹/day)
-                </label>
-                <div className="relative">
-                  <span className="absolute left-4 top-2.5 text-slate-500">₹</span>
-                  <input
-                    type="number"
-                    name="dailyRate"
-                    min="0"
-                    step="1"
-                    value={formData.dailyRate}
-                    onChange={handleChange}
-                    placeholder="e.g. 2000"
-                    className="w-full pl-8 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all text-sm"
-                  />
-                </div>
-              </div>
-
-              <div className="col-span-2 sm:col-span-1">
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Hourly Rental Rate (₹/hr)
-                </label>
-                <div className="relative">
-                  <span className="absolute left-4 top-2.5 text-slate-500">₹</span>
-                  <input
-                    type="number"
-                    name="hourlyRate"
-                    min="0"
-                    step="1"
-                    value={formData.hourlyRate}
-                    onChange={handleChange}
-                    placeholder="e.g. 200"
-                    className="w-full pl-8 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all text-sm"
-                  />
-                </div>
               </div>
             </div>
 
