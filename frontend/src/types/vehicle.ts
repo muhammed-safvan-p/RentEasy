@@ -26,8 +26,6 @@ export interface Vehicle {
   fuelType?: "Petrol" | "Diesel" | "Electric" | "Hybrid" | "CNG" | string;
   transmission?: "Manual" | "Automatic" | string;
   seatingCapacity?: number;
-  dailyRate?: number;
-  hourlyRate?: number;
   createdAt?: string;
   updatedAt?: string;
 }

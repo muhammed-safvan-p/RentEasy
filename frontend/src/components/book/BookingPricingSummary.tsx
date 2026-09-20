@@ -90,17 +90,14 @@ export const BookingPricingSummary: React.FC<BookingPricingSummaryProps> = ({
             />
           </div>
 
-          <div className="flex items-center justify-between mt-2 text-[11px] text-slate-500">
-            <span>
-              Suggested:{" "}
-              <strong className="text-slate-300">{formatCurrency(suggestedRent)}</strong>
-            </span>
-            {vehicle?.dailyRate ? (
-              <span>Rate: {formatCurrency(vehicle.dailyRate)}/day</span>
-            ) : vehicle?.hourlyRate ? (
-              <span>Rate: {formatCurrency(vehicle.hourlyRate)}/hr</span>
-            ) : null}
-          </div>
+          {suggestedRent > 0 && (
+            <div className="flex items-center justify-between mt-2 text-[11px] text-slate-500">
+              <span>
+                Suggested:{" "}
+                <strong className="text-slate-300">{formatCurrency(suggestedRent)}</strong>
+              </span>
+            </div>
+          )}
         </div>
       </section>
 

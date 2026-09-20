@@ -5,8 +5,6 @@ export interface BookingVehicle {
   name: string;
   plateNumber: string;
   imageUrl?: string;
-  dailyRate?: number;
-  hourlyRate?: number;
   fuelType?: string;
   transmission?: string;
   seatingCapacity?: number;

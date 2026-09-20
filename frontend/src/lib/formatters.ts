@@ -61,6 +61,32 @@ export function formatDateNice(dateStr?: string | Date | null): string {
 }
 
 /**
+ * Formats a date & time with 2-digit year (e.g. "Mon, Oct 12, '26, 10:00 AM")
+ */
+export function formatDateTimeShortYear(
+  dateStr?: string | Date | null,
+  includeWeekday: boolean = true
+): string {
+  if (!dateStr) return "";
+  const d = typeof dateStr === "string" ? new Date(dateStr) : dateStr;
+  if (isNaN(d.getTime())) return "";
+
+  const weekday = includeWeekday
+    ? d.toLocaleDateString("en-US", { weekday: "short" }) + ", "
+    : "";
+  const month = d.toLocaleDateString("en-US", { month: "short" });
+  const day = d.getDate();
+  const yearShort = String(d.getFullYear()).slice(-2);
+  const time = d.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+
+  return `${weekday}${month} ${day}, '${yearShort}, ${time}`;
+}
+
+/**
  * Formats a Date object into month display (e.g. "September 2026")
  */
 export function formatMonthDisplay(date?: Date | null): string {
