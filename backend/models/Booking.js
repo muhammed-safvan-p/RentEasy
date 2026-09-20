@@ -66,5 +66,6 @@ const bookingSchema = new Schema(
 );
 
 bookingSchema.index({ vehicleId: 1, isCancelled: 1, startDateTime: 1, endDateTime: 1 });
+bookingSchema.index({ vehicleId: 1, startDateTime: 1, endDateTime: 1 });
 
 module.exports = mongoose.model('Booking', bookingSchema);

@@ -96,7 +96,7 @@ class BookingRepository {
     if (isCancelled !== undefined && isCancelled !== null) {
       filter.isCancelled = isCancelled;
     }
-    return await Booking.find(filter).sort({ startDateTime: 1 });
+    return await Booking.find(filter).populate('createdBy', 'username email').sort({ startDateTime: 1 });
   }
 
   async findByVehicleIds(vehicleIds) {
@@ -201,6 +201,10 @@ class BookingRepository {
 
   async countNonCancelledByVehicle(vehicleId) {
     return await Booking.countDocuments({ vehicleId, isCancelled: false });
+  }
+
+  async deleteById(id, session = null) {
+    return await Booking.findByIdAndDelete(id, { session: session || undefined });
   }
 }
 

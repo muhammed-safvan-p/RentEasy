@@ -39,4 +39,21 @@ async function runInTransaction(callback) {
   }
 }
 
-module.exports = { runInTransaction };
+/**
+ * Checks whether the active MongoDB connection supports multi-document transactions.
+ * Returns true if running as a Replica Set or Sharded cluster; false for Standalone.
+ */
+function isReplicaSet() {
+  const topology = mongoose.connection.client?.topology?.description;
+  if (!topology) return false;
+  if (topology.type === 'Single') {
+    const servers = Array.from(topology.servers?.values() || []);
+    if (servers.some((s) => s.type === 'Standalone')) {
+      return false;
+    }
+  }
+  return topology.type === 'ReplicaSetWithPrimary' || topology.type === 'Sharded';
+}
+
+module.exports = { runInTransaction, isReplicaSet };
+

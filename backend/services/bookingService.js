@@ -2,7 +2,8 @@ const bookingRepository = require('../repositories/bookingRepository');
 const vehicleRepository = require('../repositories/vehicleRepository');
 const walletRepository = require('../repositories/walletRepository');
 const walletService = require('./walletService');
-const { runInTransaction } = require('../utils/transactionRunner');
+const lockRepository = require('../repositories/lockRepository');
+const { runInTransaction, isReplicaSet } = require('../utils/transactionRunner');
 const AppError = require('../utils/AppError');
 
 class BookingService {
@@ -15,6 +16,7 @@ class BookingService {
 
   /**
    * Checks if there are overlapping active (non-cancelled) bookings for a vehicle.
+   * Scoped strictly to the VEHICLE (checks all owners' bookings on that vehicle).
    */
   async checkOverlap({ vehicleId, startDateTime, endDateTime, excludeBookingId = null, session = null }) {
     return await bookingRepository.findOverlapping({
@@ -27,32 +29,27 @@ class BookingService {
   }
 
   /**
-   * Calculates auto-suggested total amount based on vehicle hourlyRate or dailyRate.
+   * Calculates auto-suggested total amount (returns 0 as rate fields have been removed).
    */
   calculateSuggestedAmount(vehicle, startDateTime, endDateTime) {
-    const start = new Date(startDateTime);
-    const end = new Date(endDateTime);
-    const diffMs = end.getTime() - start.getTime();
-    if (diffMs <= 0) return 0;
-
-    const hours = Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60)));
-    const days = Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
-
-    if (vehicle.hourlyRate && vehicle.hourlyRate > 0) {
-      return hours * vehicle.hourlyRate;
-    }
-    if (vehicle.dailyRate && vehicle.dailyRate > 0) {
-      return days * vehicle.dailyRate;
-    }
     return 0;
   }
 
   /**
-   * Creates a new booking with overlap check within transaction.
+   * Creates a new booking with race-safe, vehicle-scoped overlap prevention.
+   * - Scoped strictly to the vehicle (shared calendar for all owners).
+   * - In replica set: uses MongoDB multi-document transaction with vehicle write-lock serialization.
+   * - In standalone MongoDB: uses Optimistic Concurrency Control (OCC) compare-and-swap on vehicle.bookingVersion,
+   *   rolling back tentative booking and retrying on concurrent collisions.
+   * - On overlap detection or collision: returns HTTP 409 Conflict.
    */
   async createBooking({ vehicleId, customerName, startDateTime, endDateTime, totalAmount, createdBy }) {
     const start = new Date(startDateTime);
     const end = new Date(endDateTime);
+
+    if (start >= end) {
+      throw new AppError('endDateTime must be strictly after startDateTime.', 400);
+    }
 
     const vehicle = await vehicleRepository.findById(vehicleId);
     if (!vehicle) {
@@ -60,31 +57,96 @@ class BookingService {
     }
 
     if (!vehicle.isActive) {
-      throw new AppError('Cannot create booking for an inactive vehicle.', 400);
+      throw new AppError('This vehicle is currently locked/blocked by administrator. Please contact support: +91 9496432072', 403);
     }
 
-    // Calculate suggested total amount
-    const suggestedAmount = this.calculateSuggestedAmount(vehicle, start, end);
-
-    // Determine final totalAmount (allow staff override if provided)
-    let finalTotalAmount;
+    // Determine final totalAmount
+    let finalTotalAmount = 0;
     if (totalAmount !== undefined && totalAmount !== null && totalAmount !== '') {
       finalTotalAmount = Number(totalAmount);
-    } else {
-      finalTotalAmount = suggestedAmount;
     }
 
-    // Concurrency-safe overlap check & booking creation
-    const createdBooking = await runInTransaction(async (session) => {
+    // Check if the requested date range falls within any locked period
+    const overlappingLocks = await lockRepository.findByVehicleDateRange(vehicleId, start, end);
+    if (overlappingLocks.length > 0) {
+      const lock = overlappingLocks[0];
+      throw new AppError(
+        `This vehicle is locked from ${lock.startDate.toLocaleDateString()} to ${lock.endDate.toLocaleDateString()} — Reason: ${lock.reason}`,
+        409
+      );
+    }
+
+    const bookingPayload = {
+      vehicleId,
+      createdBy,
+      customerName: customerName.trim(),
+      startDateTime: start,
+      endDateTime: end,
+      totalAmount: finalTotalAmount,
+      paidAmount: 0,
+      balanceAmount: finalTotalAmount,
+      refundedAmount: 0,
+      isCancelled: false,
+    };
+
+    // ── 1. REPLICA SET MODE (Transactions available) ──
+    if (isReplicaSet()) {
+      const createdBooking = await runInTransaction(async (session) => {
+        const conflictingBooking = await this.checkOverlap({
+          vehicleId,
+          startDateTime: start,
+          endDateTime: end,
+          session,
+        });
+
+        if (conflictingBooking) {
+          const conflictError = new AppError('This vehicle is already booked for the selected time.', 409);
+          conflictError.conflictingBooking = {
+            id: conflictingBooking._id,
+            startDateTime: conflictingBooking.startDateTime,
+            endDateTime: conflictingBooking.endDateTime,
+          };
+          throw conflictError;
+        }
+
+        // Touch vehicle bookingVersion within transaction to guarantee write-write serialization
+        await vehicleRepository.touchBookingVersion(vehicleId, session);
+
+        return await bookingRepository.create(bookingPayload, session);
+      });
+
+      return {
+        booking: createdBooking,
+        suggestedAmount: 0,
+      };
+    }
+
+    // ── 2. STANDALONE MONGO MODE (Optimistic Concurrency Control with Compare-And-Swap) ──
+    const MAX_RETRIES = 5;
+    let attempt = 0;
+
+    while (attempt < MAX_RETRIES) {
+      attempt++;
+
+      // Read current vehicle state and version
+      const currentVehicle = await vehicleRepository.findById(vehicleId);
+      if (!currentVehicle) {
+        throw new AppError('Vehicle not found.', 404);
+      }
+      if (!currentVehicle.isActive) {
+        throw new AppError('Cannot create booking for an inactive vehicle.', 400);
+      }
+      const currentVersion = currentVehicle.bookingVersion || 0;
+
+      // Check overlap across ALL bookings for this vehicle
       const conflictingBooking = await this.checkOverlap({
         vehicleId,
         startDateTime: start,
         endDateTime: end,
-        session,
       });
 
       if (conflictingBooking) {
-        const conflictError = new AppError('Vehicle already booked for this time range', 409);
+        const conflictError = new AppError('This vehicle is already booked for the selected time.', 409);
         conflictError.conflictingBooking = {
           id: conflictingBooking._id,
           startDateTime: conflictingBooking.startDateTime,
@@ -93,31 +155,38 @@ class BookingService {
         throw conflictError;
       }
 
-      return await bookingRepository.create(
-        {
-          vehicleId,
-          createdBy,
-          customerName: customerName.trim(),
-          startDateTime: start,
-          endDateTime: end,
-          totalAmount: finalTotalAmount,
-          paidAmount: 0,
-          balanceAmount: finalTotalAmount,
-          refundedAmount: 0,
-          isCancelled: false,
-        },
-        session
-      );
-    });
+      // Tentatively insert booking document
+      const tentativeBooking = await bookingRepository.create(bookingPayload);
 
-    return {
-      booking: createdBooking,
-      suggestedAmount,
-    };
+      // Atomic CAS: Only increment if vehicle bookingVersion matches currentVersion
+      const versionUpdated = await vehicleRepository.incrementBookingVersion(vehicleId, currentVersion);
+
+      if (versionUpdated) {
+        // Success! Atomic compare-and-swap confirmed no concurrent bookings committed.
+        return {
+          booking: tentativeBooking,
+          suggestedAmount: 0,
+        };
+      }
+
+      // Race detected! A concurrent booking claimed this vehicle. Rollback tentative booking.
+      await bookingRepository.deleteById(tentativeBooking._id);
+
+      // If retries remain, wait small randomized jitter (10ms - 50ms) and retry
+      if (attempt < MAX_RETRIES) {
+        await new Promise((resolve) => setTimeout(resolve, Math.floor(Math.random() * 40) + 10));
+        continue;
+      }
+    }
+
+    // Retries exhausted under extreme concurrency
+    throw new AppError('This vehicle is already booked for the selected time.', 409);
   }
 
   /**
-   * Updates an existing booking.
+   * Updates an existing booking with race-safe overlap check.
+   * - Excludes the booking's own _id from overlap check.
+   * - Atomically guards date/vehicle modifications against concurrent bookings.
    */
   async updateBooking(id, updateData) {
     const { customerName, startDateTime, endDateTime, totalAmount, vehicleId } = updateData;
@@ -139,25 +208,84 @@ class BookingService {
       throw new AppError('endDateTime must be strictly after startDateTime.', 400);
     }
 
-    // Check if vehicle is valid
+    const currentVehicle = await vehicleRepository.findById(booking.vehicleId);
+    if (currentVehicle && !currentVehicle.isActive) {
+      throw new AppError('This vehicle is currently locked/blocked by administrator. Please contact support: +91 9496432072', 403);
+    }
+
+    // Check if new vehicle is valid
     if (vehicleId && vehicleId.toString() !== booking.vehicleId.toString()) {
       const vehicle = await vehicleRepository.findById(vehicleId);
       if (!vehicle) {
         throw new AppError('New vehicle not found.', 404);
       }
       if (!vehicle.isActive) {
-        throw new AppError('Cannot move booking to an inactive vehicle.', 400);
+        throw new AppError('This vehicle is currently locked/blocked by administrator. Please contact support: +91 9496432072', 403);
       }
     }
 
-    return await runInTransaction(async (session) => {
-      // Re-verify overlap if dates or vehicle changed
-      const datesOrVehicleChanged =
-        newStart.getTime() !== booking.startDateTime.getTime() ||
-        newEnd.getTime() !== booking.endDateTime.getTime() ||
-        targetVehicleId.toString() !== booking.vehicleId.toString();
+    // Validate new total amount against already paid amount if provided
+    let newTotalAmount = booking.totalAmount;
+    let newBalanceAmount = booking.balanceAmount;
+    if (totalAmount !== undefined && totalAmount !== null && totalAmount !== '') {
+      const numAmount = Number(totalAmount);
+      if (numAmount < booking.paidAmount) {
+        throw new AppError(
+          `New total amount (${numAmount}) cannot be less than already paid amount (${booking.paidAmount}).`,
+          400
+        );
+      }
+      newTotalAmount = numAmount;
+      newBalanceAmount = newTotalAmount - booking.paidAmount;
+    }
 
-      if (datesOrVehicleChanged) {
+    // Check if dates or vehicle changed
+    const datesOrVehicleChanged =
+      newStart.getTime() !== booking.startDateTime.getTime() ||
+      newEnd.getTime() !== booking.endDateTime.getTime() ||
+      targetVehicleId.toString() !== booking.vehicleId.toString();
+
+    // If dates and vehicle did NOT change, no overlap check is needed. Simply update metadata.
+    if (!datesOrVehicleChanged) {
+      if (customerName) {
+        booking.customerName = customerName.trim();
+      }
+      booking.totalAmount = newTotalAmount;
+      booking.balanceAmount = newBalanceAmount;
+      return await bookingRepository.save(booking);
+    }
+
+    // Dates or vehicle DID change. Check vehicle locks first.
+    const overlappingLocks = await lockRepository.findByVehicleDateRange(targetVehicleId, newStart, newEnd);
+    if (overlappingLocks.length > 0) {
+      const lock = overlappingLocks[0];
+      throw new AppError(
+        `This vehicle is locked from ${lock.startDate.toLocaleDateString()} to ${lock.endDate.toLocaleDateString()} — Reason: ${lock.reason}`,
+        409
+      );
+    }
+
+    const updatedFields = {
+      customerName: customerName ? customerName.trim() : booking.customerName,
+      startDateTime: newStart,
+      endDateTime: newEnd,
+      vehicleId: targetVehicleId,
+      totalAmount: newTotalAmount,
+      balanceAmount: newBalanceAmount,
+    };
+
+    const originalFields = {
+      customerName: booking.customerName,
+      startDateTime: booking.startDateTime,
+      endDateTime: booking.endDateTime,
+      vehicleId: booking.vehicleId,
+      totalAmount: booking.totalAmount,
+      balanceAmount: booking.balanceAmount,
+    };
+
+    // ── 1. REPLICA SET MODE ──
+    if (isReplicaSet()) {
+      return await runInTransaction(async (session) => {
         const conflictingBooking = await this.checkOverlap({
           vehicleId: targetVehicleId,
           startDateTime: newStart,
@@ -167,7 +295,7 @@ class BookingService {
         });
 
         if (conflictingBooking) {
-          const conflictError = new AppError('Vehicle already booked for this time range', 409);
+          const conflictError = new AppError('This vehicle is already booked for the selected time.', 409);
           conflictError.conflictingBooking = {
             id: conflictingBooking._id,
             startDateTime: conflictingBooking.startDateTime,
@@ -175,31 +303,68 @@ class BookingService {
           };
           throw conflictError;
         }
+
+        await vehicleRepository.touchBookingVersion(targetVehicleId, session);
+
+        Object.assign(booking, updatedFields);
+        return await bookingRepository.save(booking, session);
+      });
+    }
+
+    // ── 2. STANDALONE MONGO MODE (OCC with Compare-And-Swap) ──
+    const MAX_RETRIES = 5;
+    let attempt = 0;
+
+    while (attempt < MAX_RETRIES) {
+      attempt++;
+
+      const currentVehicle = await vehicleRepository.findById(targetVehicleId);
+      if (!currentVehicle) {
+        throw new AppError('Vehicle not found.', 404);
+      }
+      const currentVersion = currentVehicle.bookingVersion || 0;
+
+      // Overlap check on targetVehicleId, excluding own booking._id
+      const conflictingBooking = await this.checkOverlap({
+        vehicleId: targetVehicleId,
+        startDateTime: newStart,
+        endDateTime: newEnd,
+        excludeBookingId: booking._id,
+      });
+
+      if (conflictingBooking) {
+        const conflictError = new AppError('This vehicle is already booked for the selected time.', 409);
+        conflictError.conflictingBooking = {
+          id: conflictingBooking._id,
+          startDateTime: conflictingBooking.startDateTime,
+          endDateTime: conflictingBooking.endDateTime,
+        };
+        throw conflictError;
       }
 
-      if (customerName) {
-        booking.customerName = customerName.trim();
-      }
-      booking.startDateTime = newStart;
-      booking.endDateTime = newEnd;
-      booking.vehicleId = targetVehicleId;
+      // Tentatively apply updates to booking
+      Object.assign(booking, updatedFields);
+      await bookingRepository.save(booking);
 
-      if (totalAmount !== undefined && totalAmount !== null && totalAmount !== '') {
-        const numAmount = Number(totalAmount);
-        if (numAmount < booking.paidAmount) {
-          throw new AppError(
-            `New total amount (${numAmount}) cannot be less than already paid amount (${booking.paidAmount}).`,
-            400
-          );
-        }
-        booking.totalAmount = numAmount;
-        // Recompute balance without retroactively altering paidAmount
-        booking.balanceAmount = booking.totalAmount - booking.paidAmount;
+      // Atomic CAS on Vehicle
+      const versionUpdated = await vehicleRepository.incrementBookingVersion(targetVehicleId, currentVersion);
+
+      if (versionUpdated) {
+        // Success!
+        return booking;
       }
 
-      await bookingRepository.save(booking, session);
-      return booking;
-    });
+      // Conflict! Roll back booking to original state
+      Object.assign(booking, originalFields);
+      await bookingRepository.save(booking);
+
+      if (attempt < MAX_RETRIES) {
+        await new Promise((resolve) => setTimeout(resolve, Math.floor(Math.random() * 40) + 10));
+        continue;
+      }
+    }
+
+    throw new AppError('This vehicle is already booked for the selected time.', 409);
   }
 
   /**
@@ -213,6 +378,11 @@ class BookingService {
 
     if (booking.isCancelled) {
       throw new AppError('Booking is already cancelled.', 400);
+    }
+
+    const vehicle = await vehicleRepository.findById(booking.vehicleId);
+    if (vehicle && !vehicle.isActive) {
+      throw new AppError('This vehicle is currently locked/blocked by administrator. Please contact support: +91 9496432072', 403);
     }
 
     let parsedRefundAmount = 0;
@@ -304,6 +474,11 @@ class BookingService {
 
     if (booking.isCancelled) {
       throw new AppError('Cannot record payment on a cancelled booking.', 400);
+    }
+
+    const vehicle = await vehicleRepository.findById(booking.vehicleId);
+    if (vehicle && !vehicle.isActive) {
+      throw new AppError('This vehicle is currently locked/blocked by administrator. Please contact support: +91 9496432072', 403);
     }
 
     const paymentTimestamp = paidAt && !isNaN(new Date(paidAt).getTime()) ? new Date(paidAt) : new Date();
@@ -441,7 +616,7 @@ class BookingService {
     }
 
     const pageNum = Math.max(1, parseInt(page, 10) || 1);
-    const limitNum = Math.max(1, Math.min(100, parseInt(limit, 10) || 50));
+    const limitNum = Math.max(1, Math.min(1000, parseInt(limit, 10) || 50));
     const skip = (pageNum - 1) * limitNum;
 
     const [totalCount, bookings] = await Promise.all([
@@ -451,7 +626,7 @@ class BookingService {
         [
           {
             path: 'vehicleId',
-            select: 'name plateNumber imageUrl dailyRate hourlyRate fuelType transmission seatingCapacity',
+            select: 'name plateNumber imageUrl fuelType transmission seatingCapacity',
           },
           { path: 'createdBy', select: 'username role' },
           { path: 'cancelledBy', select: 'username role' },
@@ -487,24 +662,37 @@ class BookingService {
       filter.isCancelled = false;
     }
 
+    let fromDate = null;
+    let toDate = null;
     if (from || to) {
       if (from && to) {
-        const fromDate = new Date(from);
-        const toDate = new Date(to);
+        fromDate = new Date(from);
+        toDate = new Date(to);
         filter.startDateTime = { $lte: toDate };
         filter.endDateTime = { $gte: fromDate };
       } else if (from) {
-        filter.endDateTime = { $gte: new Date(from) };
+        fromDate = new Date(from);
+        filter.endDateTime = { $gte: fromDate };
       } else if (to) {
-        filter.startDateTime = { $lte: new Date(to) };
+        toDate = new Date(to);
+        filter.startDateTime = { $lte: toDate };
       }
     }
 
-    const bookings = await bookingRepository.find(
-      filter,
-      { path: 'createdBy', select: 'username role' },
-      { startDateTime: 1 }
-    );
+    const [bookings, locks] = await Promise.all([
+      bookingRepository.find(
+        filter,
+        { path: 'createdBy', select: 'username role' },
+        { startDateTime: 1 }
+      ),
+      fromDate && toDate
+        ? lockRepository.findByVehicleDateRange(vehicleId, fromDate, toDate)
+        : lockRepository.findByVehicleDateRange(
+            vehicleId,
+            fromDate || new Date('1970-01-01'),
+            toDate || new Date('2099-12-31')
+          ),
+    ]);
 
     const formatted = bookings.map((b) => ({
       id: b._id,
@@ -526,6 +714,7 @@ class BookingService {
       vehicleName: vehicle.name,
       plateNumber: vehicle.plateNumber,
       bookings: formatted,
+      locks: locks || [],
     };
   }
 

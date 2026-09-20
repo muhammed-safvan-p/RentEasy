@@ -45,8 +45,41 @@ class VehicleRepository {
     return await vehicle.save({ session: session || undefined });
   }
 
+  async deleteById(id, session = null) {
+    return await Vehicle.findByIdAndDelete(id, { session: session || undefined });
+  }
+
   async save(vehicle, session = null) {
     return await vehicle.save({ session: session || undefined });
+  }
+
+  /**
+   * Atomically increment bookingVersion on a vehicle using Compare-And-Swap (OCC).
+   * If currentVersion === 0, matches either bookingVersion: 0 or documents where bookingVersion is not set yet.
+   * Returns updated vehicle document if version matched, or null if a concurrent change occurred.
+   */
+  async incrementBookingVersion(vehicleId, currentVersion, session = null) {
+    const filter =
+      currentVersion === 0
+        ? { _id: vehicleId, $or: [{ bookingVersion: 0 }, { bookingVersion: { $exists: false } }] }
+        : { _id: vehicleId, bookingVersion: currentVersion };
+
+    return await Vehicle.findOneAndUpdate(
+      filter,
+      { $inc: { bookingVersion: 1 } },
+      { returnDocument: 'after', session: session || undefined }
+    );
+  }
+
+  /**
+   * Increment bookingVersion unconditionally (used within an ACID transaction to guarantee write-write serialization).
+   */
+  async touchBookingVersion(vehicleId, session = null) {
+    return await Vehicle.findByIdAndUpdate(
+      vehicleId,
+      { $inc: { bookingVersion: 1 } },
+      { returnDocument: 'after', session: session || undefined }
+    );
   }
 }
 
