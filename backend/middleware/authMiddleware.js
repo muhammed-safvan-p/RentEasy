@@ -21,7 +21,15 @@ const protect = async (req, res, next) => {
         return res.status(401).json({ message: 'User not found' });
       }
       if (req.user.isBlock) {
-        return res.status(403).json({ message: 'Your account has been deactivated. Please contact support.' });
+        res.clearCookie('token', {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'lax',
+        });
+        return res.status(403).json({
+          message: 'Your account has been blocked. Please contact support: +91 9496432072',
+          isBlocked: true,
+        });
       }
       next();
     } catch (error) {
@@ -59,6 +67,14 @@ const authorizeVehicleAccess = async (req, res, next) => {
 
     if (!isOwner && !isAdmin) {
       return res.status(403).json({ message: 'Not authorized to access this vehicle' });
+    }
+
+    // If vehicle is blocked by admin, prevent non-admin owners from performing any mutations
+    if (!isAdmin && vehicle.isActive === false && req.method !== 'GET') {
+      return res.status(403).json({
+        message: 'This vehicle is currently locked/blocked by administrator. Please contact support: +91 9496432072',
+        isVehicleBlocked: true,
+      });
     }
 
     // Attach vehicle to request for downstream use

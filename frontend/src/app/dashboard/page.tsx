@@ -2,29 +2,26 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Car, AlertCircle, Plus, X, Copy, Check, Calendar, Wallet, Clock, CheckCircle2, ChevronRight } from "lucide-react";
+import {
+  Car,
+  AlertCircle,
+  Plus,
+  X,
+  Copy,
+  Check,
+  Calendar,
+  Wallet,
+  Clock,
+  CheckCircle2,
+  ChevronRight,
+  Lock,
+  PhoneCall,
+  ShieldAlert,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 
-import { useCurrentUser, useUserVehicles } from "@/hooks/useVehicleData";
+import { useCurrentUser, useUserVehicles, GarageVehicle } from "@/hooks/useVehicleData";
 import { formatCurrency } from "@/lib/formatters";
-
-interface Vehicle {
-  _id: string;
-  name: string;
-  plateNumber: string;
-  isActive?: boolean;
-  totalBookings?: number;
-  monthBookings?: number;
-  currentBalance?: number;
-  currentBookingStatus?: {
-    isBooked: boolean;
-    endsAt?: string;
-    nextBookingDate?: string;
-    hasNextBookingThisMonth: boolean;
-    customerName?: string;
-    message?: string;
-  };
-}
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -32,6 +29,7 @@ export default function DashboardPage() {
   const { vehicles, isLoading: vehiclesLoading, error: vehiclesError } = useUserVehicles();
 
   const [showContactModal, setShowContactModal] = useState(false);
+  const [blockedVehicleModal, setBlockedVehicleModal] = useState<GarageVehicle | null>(null);
   const [copied, setCopied] = useState(false);
 
   const loading = userLoading || vehiclesLoading;
@@ -75,9 +73,9 @@ export default function DashboardPage() {
     return `${datePart}, ${timeStr}`;
   };
 
-  const handleCopyPhone = async () => {
+  const handleCopyPhone = async (phone: string = "9496432072") => {
     try {
-      await navigator.clipboard.writeText("9496432072");
+      await navigator.clipboard.writeText(phone);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
@@ -120,7 +118,10 @@ export default function DashboardPage() {
         {loading ? (
           <div className="flex flex-col gap-5">
             {[1, 2, 3].map((i) => (
-              <div key={i} className="bg-[#1a1a2e] rounded-3xl p-5 border border-white/5 animate-pulse h-48"></div>
+              <div
+                key={i}
+                className="bg-[#1a1a2e] rounded-3xl p-5 border border-white/5 animate-pulse h-48"
+              ></div>
             ))}
           </div>
         ) : error ? (
@@ -141,17 +142,26 @@ export default function DashboardPage() {
         ) : (
           <div className="flex flex-col gap-5">
             {vehicles.map((car) => {
-              const isBooked = !!car.currentBookingStatus?.isBooked;
+              const isBlocked = car.isActive === false;
+              const isBooked = !isBlocked && !!car.currentBookingStatus?.isBooked;
 
               return (
                 <div
                   key={car._id}
-                  className="bg-[#1a1a2e] rounded-3xl p-5 border border-white/5 relative overflow-hidden shadow-lg group hover:border-white/10 transition-all flex flex-col gap-4"
+                  className={`rounded-3xl p-5 border relative overflow-hidden shadow-lg group transition-all flex flex-col gap-4 ${
+                    isBlocked
+                      ? "bg-[#161220] border-rose-500/25 hover:border-rose-500/40"
+                      : "bg-[#1a1a2e] border-white/5 hover:border-white/10"
+                  }`}
                 >
                   {/* Ambient Background Glow */}
                   <div
                     className={`absolute top-0 right-0 w-36 h-36 blur-[50px] rounded-full -mr-10 -mt-10 pointer-events-none transition-colors ${
-                      isBooked ? "bg-amber-500/10" : "bg-indigo-500/10"
+                      isBlocked
+                        ? "bg-rose-500/15"
+                        : isBooked
+                        ? "bg-amber-500/10"
+                        : "bg-indigo-500/10"
                     }`}
                   />
 
@@ -160,17 +170,21 @@ export default function DashboardPage() {
                     <div className="flex gap-3.5 items-center">
                       <div
                         className={`w-12 h-12 rounded-2xl flex items-center justify-center border transition-colors ${
-                          isBooked
+                          isBlocked
+                            ? "bg-rose-500/15 text-rose-400 border-rose-500/30"
+                            : isBooked
                             ? "bg-amber-500/10 text-amber-400 border-amber-500/20"
                             : "bg-indigo-500/10 text-indigo-400 border-indigo-500/20"
                         }`}
                       >
-                        <Car className="w-6 h-6" />
+                        {isBlocked ? <Lock className="w-5 h-5 text-rose-400" /> : <Car className="w-6 h-6" />}
                       </div>
                       <div>
-                        <h3 className="text-lg font-semibold text-white tracking-tight leading-tight">
-                          {car.name}
-                        </h3>
+                        <div className="flex items-center gap-2">
+                          <h3 className="text-lg font-semibold text-white tracking-tight leading-tight">
+                            {car.name}
+                          </h3>
+                        </div>
                         <span className="text-xs font-mono font-medium text-slate-400 bg-[#0f0f20] px-2 py-0.5 rounded-md border border-white/5 mt-1 inline-block">
                           {car.plateNumber}
                         </span>
@@ -178,7 +192,12 @@ export default function DashboardPage() {
                     </div>
 
                     {/* Live Status Pill */}
-                    {isBooked ? (
+                    {isBlocked ? (
+                      <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-500/20 border border-rose-500/40 text-rose-300 text-xs font-bold animate-pulse">
+                        <Lock className="w-3.5 h-3.5 text-rose-400" />
+                        <span>Locked</span>
+                      </div>
+                    ) : isBooked ? (
                       <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/25 text-amber-400 text-xs font-semibold">
                         <span className="relative flex h-2 w-2">
                           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
@@ -194,9 +213,32 @@ export default function DashboardPage() {
                     )}
                   </div>
 
-                  {/* Booking Status Banner */}
+                  {/* Blocked Alert Banner or Booking Status Banner */}
                   <div className="relative z-10">
-                    {isBooked ? (
+                    {isBlocked ? (
+                      <div className="bg-gradient-to-r from-rose-500/15 via-[#1a1426] to-[#12121f] rounded-2xl p-4 border border-rose-500/30 flex flex-col gap-3">
+                        <div className="flex items-start gap-3">
+                          <div className="w-9 h-9 rounded-xl bg-rose-500/20 flex items-center justify-center text-rose-400 shrink-0 mt-0.5">
+                            <ShieldAlert className="w-4.5 h-4.5" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <span className="text-[11px] font-bold text-rose-300 uppercase tracking-wider">
+                              Vehicle Blocked by Admin
+                            </span>
+                            <p className="text-xs text-slate-300 mt-0.5 leading-relaxed">
+                              All booking and operational requests for this vehicle are paused.
+                            </p>
+                          </div>
+                        </div>
+                        <a
+                          href="tel:+919496432072"
+                          className="flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-rose-200 text-xs font-semibold tracking-wide transition-all active:scale-98"
+                        >
+                          <PhoneCall className="w-3.5 h-3.5 text-rose-400 animate-pulse" />
+                          <span>Contact Support: +91 9496432072</span>
+                        </a>
+                      </div>
+                    ) : isBooked ? (
                       <div className="bg-gradient-to-r from-amber-500/10 via-[#171728] to-[#12121f] rounded-2xl p-3.5 border border-amber-500/20 flex items-center gap-3">
                         <div className="w-9 h-9 rounded-xl bg-amber-500/15 flex items-center justify-center text-amber-400 shrink-0">
                           <Clock className="w-4 h-4" />
@@ -281,14 +323,24 @@ export default function DashboardPage() {
                     </div>
                   </div>
 
-                  {/* Manage Button */}
-                  <Link
-                    href={`/vehicles/${car._id}`}
-                    className="w-full btn-primary rounded-xl py-3 text-sm font-semibold flex items-center justify-center gap-2 relative z-10 hover:shadow-lg hover:shadow-indigo-500/20 active:scale-[0.99] transition-all group/btn"
-                  >
-                    <span>Manage {car.name.split(" ")[0]}</span>
-                    <ChevronRight className="w-4 h-4 group-hover/btn:translate-x-0.5 transition-transform" />
-                  </Link>
+                  {/* Manage Button / Locked State */}
+                  {isBlocked ? (
+                    <button
+                      onClick={() => setBlockedVehicleModal(car)}
+                      className="w-full rounded-xl py-3 text-sm font-semibold flex items-center justify-center gap-2 relative z-10 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-300 transition-all cursor-pointer active:scale-[0.99]"
+                    >
+                      <Lock className="w-4 h-4 text-rose-400" />
+                      <span>Vehicle Locked • Contact Support</span>
+                    </button>
+                  ) : (
+                    <Link
+                      href={`/vehicles/${car._id}`}
+                      className="w-full btn-primary rounded-xl py-3 text-sm font-semibold flex items-center justify-center gap-2 relative z-10 hover:shadow-lg hover:shadow-indigo-500/20 active:scale-[0.99] transition-all group/btn"
+                    >
+                      <span>Manage {car.name.split(" ")[0]}</span>
+                      <ChevronRight className="w-4 h-4 group-hover/btn:translate-x-0.5 transition-transform" />
+                    </Link>
+                  )}
                 </div>
               );
             })}
@@ -296,9 +348,79 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {/* Contact Modal */}
+      {/* BLOCKED VEHICLE MODAL */}
+      {blockedVehicleModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center px-4 bg-black/70 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-[#12121f] rounded-3xl p-6 w-full max-w-sm border border-rose-500/30 shadow-2xl relative">
+            <button
+              onClick={() => setBlockedVehicleModal(null)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-white"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="w-12 h-12 rounded-2xl bg-rose-500/20 border border-rose-500/30 text-rose-400 flex items-center justify-center mb-4">
+              <Lock className="w-6 h-6" />
+            </div>
+
+            <h3 className="text-xl font-bold text-white mb-1">Vehicle Locked</h3>
+            <p className="text-xs text-rose-300 font-medium mb-3">
+              {blockedVehicleModal.name} ({blockedVehicleModal.plateNumber})
+            </p>
+
+            <p className="text-slate-400 text-sm mb-5 leading-relaxed">
+              This vehicle has been locked by an administrator. All new booking creation, payments,
+              and wallet operations are paused until reactivation.
+            </p>
+
+            <div className="bg-[#0f0f20] rounded-2xl p-4 border border-white/5 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-slate-500 font-medium">Support Contact</span>
+                <span className="text-xs font-semibold text-slate-300">Admin Support</span>
+              </div>
+              <div
+                className="flex items-center justify-between cursor-pointer active:scale-[0.98] transition-transform p-2 rounded-xl bg-white/5 hover:bg-white/10"
+                onClick={() => handleCopyPhone("9496432072")}
+              >
+                <div className="flex items-center gap-2">
+                  <PhoneCall className="w-4 h-4 text-rose-400" />
+                  <span className="text-sm font-semibold text-white font-mono">+91 9496432072</span>
+                </div>
+                <div className="flex items-center gap-1.5 text-xs text-indigo-400">
+                  {copied ? (
+                    <span className="text-emerald-400 font-medium flex items-center gap-1">
+                      <Check className="w-3.5 h-3.5" /> Copied
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1 text-slate-400 hover:text-white">
+                      <Copy className="w-3.5 h-3.5" /> Copy
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-5 flex items-center gap-3">
+              <a
+                href="tel:+919496432072"
+                className="flex-1 py-2.5 px-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold text-center transition-colors shadow-sm"
+              >
+                Call Support
+              </a>
+              <button
+                onClick={() => setBlockedVehicleModal(null)}
+                className="flex-1 py-2.5 px-3 rounded-xl bg-white/10 hover:bg-white/15 text-slate-300 text-xs font-semibold transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Vehicle Contact Modal */}
       {showContactModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-black/60 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center px-4 bg-black/60 backdrop-blur-sm">
           <div className="bg-[#12121f] rounded-3xl p-6 w-full max-w-sm border border-white/10 shadow-2xl relative">
             <button
               onClick={() => setShowContactModal(false)}
@@ -315,7 +437,10 @@ export default function DashboardPage() {
                 <span className="text-sm text-slate-500">Name</span>
                 <span className="text-sm font-medium text-white">muhammed safvan</span>
               </div>
-              <div className="flex items-center justify-between cursor-pointer active:scale-[0.98] transition-transform" onClick={handleCopyPhone}>
+              <div
+                className="flex items-center justify-between cursor-pointer active:scale-[0.98] transition-transform"
+                onClick={() => handleCopyPhone("9496432072")}
+              >
                 <span className="text-sm text-slate-500">Phone</span>
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-medium text-white">9496432072</span>

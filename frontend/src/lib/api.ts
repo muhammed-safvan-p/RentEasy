@@ -15,6 +15,17 @@ export async function fetcher<T = any>(url: string): Promise<T> {
 
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({}));
+
+    // If account was blocked, redirect to login with notification
+    if (
+      typeof window !== "undefined" &&
+      (res.status === 403 && (errorData.isBlocked || errorData.message?.toLowerCase().includes("blocked")))
+    ) {
+      if (!window.location.pathname.startsWith("/login")) {
+        window.location.href = "/login?blocked=true";
+      }
+    }
+
     const error = new Error(errorData.message || `Request failed with status ${res.status}`);
     (error as any).status = res.status;
     (error as any).info = errorData;

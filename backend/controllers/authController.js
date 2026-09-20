@@ -42,7 +42,14 @@ class AuthController {
       res.status(200).json({ message: 'Login successful', role: user.role });
     } catch (error) {
       if (error.message === 'Account blocked') {
-        return next(new AppError('Your account has been deactivated. Please contact support.', 403));
+        res.clearCookie('token', {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'lax',
+        });
+        return next(
+          new AppError('Your account has been blocked. Please contact support: +91 9496432072', 403)
+        );
       }
       if (error.message === 'Username not found' || error.message === 'Incorrect password') {
         return next(new AppError('Invalid username or password', 401));
