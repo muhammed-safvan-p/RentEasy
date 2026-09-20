@@ -45,7 +45,7 @@ export default function BottomNav() {
   const safeIndex = activeIndex >= 0 ? activeIndex : 0;
 
   return (
-    <div className="fixed bottom-6 max-w-[420px] w-[calc(100%-2rem)] left-1/2 -translate-x-1/2 z-50">
+    <div className="fixed bottom-6 max-w-[420px] w-[calc(100%-2rem)] left-1/2 -translate-x-1/2 z-40">
       <nav className="relative flex items-center h-[72px] rounded-full bg-[#16162a]/90 border border-white/10 shadow-[0_12px_40px_rgba(0,0,0,0.6)] backdrop-blur-2xl px-2">
         
         {/* Sliding Active Pill */}

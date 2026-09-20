@@ -28,7 +28,7 @@ export const OverpayWarningModal: React.FC<OverpayWarningModalProps> = ({
   if (!overpayConfirmData || !selectedBooking) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="w-full max-w-sm bg-[#18182c] border border-amber-500/30 rounded-3xl p-5 shadow-2xl space-y-4">
         <div className="flex items-center gap-3">
           <div className="w-11 h-11 rounded-2xl bg-amber-500/15 border border-amber-500/25 flex items-center justify-center text-amber-400 shrink-0 shadow-lg shadow-amber-500/10">

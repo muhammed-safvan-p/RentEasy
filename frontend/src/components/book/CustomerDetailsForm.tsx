@@ -2,15 +2,18 @@
 
 import React from "react";
 import { User } from "lucide-react";
+import { DealerComboboxInput } from "@/components/dealers/DealerComboboxInput";
 
 interface CustomerDetailsFormProps {
   customerName: string;
   onCustomerNameChange: (name: string) => void;
+  vehicleId?: string;
 }
 
 export const CustomerDetailsForm: React.FC<CustomerDetailsFormProps> = ({
   customerName,
   onCustomerNameChange,
+  vehicleId,
 }) => {
   return (
     <section className="bg-[#17172a] border border-white/10 rounded-3xl p-4 shadow-lg space-y-3">
@@ -22,21 +25,26 @@ export const CustomerDetailsForm: React.FC<CustomerDetailsFormProps> = ({
       </div>
 
       <div>
-        <label
-          htmlFor="customerName"
-          className="block text-[11px] font-medium text-slate-400 mb-1.5"
-        >
-          Customer Name <span className="text-rose-400">*</span>
-        </label>
-        <input
+        <div className="flex items-center justify-between mb-1.5">
+          <label
+            htmlFor="customerName"
+            className="block text-[11px] font-medium text-slate-400"
+          >
+            Customer Name <span className="text-rose-400">*</span>
+          </label>
+          <span className="text-[10px] text-slate-500">
+            Type name or select dealer
+          </span>
+        </div>
+
+        <DealerComboboxInput
           id="customerName"
-          type="text"
+          value={customerName}
+          onChange={onCustomerNameChange}
+          vehicleId={vehicleId}
+          placeholder="e.g. Rahul Sharma or pick dealer"
           required
           autoFocus
-          value={customerName}
-          onChange={(e) => onCustomerNameChange(e.target.value)}
-          placeholder="e.g. Rahul Sharma"
-          className="w-full bg-[#101020] border border-white/10 rounded-2xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500/80 focus:ring-2 focus:ring-indigo-500/20 transition-all shadow-inner"
         />
       </div>
     </section>

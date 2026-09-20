@@ -29,6 +29,7 @@ import {
   X,
 } from "lucide-react";
 import { Vehicle, OperationalNote, VehicleOwner } from "@/types";
+import { DealerManagementCard } from "@/components/dealers/DealerManagementCard";
 
 interface VehicleStats {
   totalTrips: number;
@@ -549,6 +550,9 @@ export default function VehicleProfilePage() {
             )}
           </div>
         </div>
+
+        {/* Dealer Presets */}
+        <DealerManagementCard vehicleId={id} />
 
         {/* 5. Operational Notes & Instructions */}
         <div className="bg-[#1a1a2e] border border-white/10 rounded-3xl p-5 shadow-xl">

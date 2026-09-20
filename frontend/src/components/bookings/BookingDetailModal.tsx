@@ -58,7 +58,7 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({
   if (!selectedBooking) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="w-full sm:max-w-md bg-[#161628] border border-white/10 rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
         {/* Modal Header */}
         <div className="p-4 border-b border-white/10 flex items-center justify-between bg-[#1a1a2e]">

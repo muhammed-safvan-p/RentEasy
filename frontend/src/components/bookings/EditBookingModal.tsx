@@ -1,8 +1,9 @@
 "use client";
 
 import React from "react";
-import { X, Pencil, AlertCircle, User, Calendar, Clock } from "lucide-react";
+import { X, Pencil, AlertCircle, Calendar, Clock } from "lucide-react";
 import { Booking } from "@/types/booking";
+import { DealerComboboxInput } from "@/components/dealers/DealerComboboxInput";
 
 interface EditBookingModalProps {
   editingBooking: Booking | null;
@@ -12,6 +13,7 @@ interface EditBookingModalProps {
   editTotalAmount: string;
   submittingEdit: boolean;
   editError: string;
+  vehicleId?: string;
   formatCurrency: (amount: number) => string;
   getBookingDurationLabel: (startStr: string, endStr: string) => string;
   onClose: () => void;
@@ -30,6 +32,7 @@ export const EditBookingModal: React.FC<EditBookingModalProps> = ({
   editTotalAmount,
   submittingEdit,
   editError,
+  vehicleId,
   formatCurrency,
   getBookingDurationLabel,
   onClose,
@@ -41,12 +44,18 @@ export const EditBookingModal: React.FC<EditBookingModalProps> = ({
 }) => {
   if (!editingBooking) return null;
 
+  const effectiveVehicleId =
+    vehicleId ||
+    (typeof editingBooking?.vehicleId === "string"
+      ? editingBooking.vehicleId
+      : editingBooking?.vehicleId?._id);
+
   return (
     <div
       role="dialog"
       aria-modal="true"
       aria-labelledby="edit-booking-title"
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200"
+      className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200"
     >
       <div className="w-full max-w-md bg-[#161628] border border-indigo-500/30 rounded-3xl p-5 shadow-2xl space-y-4 max-h-[92vh] overflow-y-auto no-scrollbar">
         {/* Modal Header */}
@@ -85,20 +94,22 @@ export const EditBookingModal: React.FC<EditBookingModalProps> = ({
         <form onSubmit={onSubmit} className="space-y-3.5">
           {/* Customer Name */}
           <div>
-            <label className="block text-[11px] font-medium text-slate-400 mb-1">
-              Customer Name
-            </label>
-            <div className="relative">
-              <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-              <input
-                type="text"
-                required
-                value={editCustomerName}
-                onChange={(e) => onCustomerNameChange(e.target.value)}
-                placeholder="Enter customer name"
-                className="w-full bg-[#101020] border border-white/10 rounded-2xl pl-9 pr-3.5 py-2.5 text-xs font-semibold text-white focus:outline-none focus:border-indigo-500/80 transition-all shadow-inner"
-              />
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-[11px] font-medium text-slate-400">
+                Customer Name
+              </label>
+              <span className="text-[10px] text-slate-500">
+                Type name or select dealer
+              </span>
             </div>
+            <DealerComboboxInput
+              value={editCustomerName}
+              onChange={onCustomerNameChange}
+              vehicleId={effectiveVehicleId}
+              placeholder="Enter customer name or pick dealer"
+              required
+              inputClassName="w-full bg-[#101020] border border-white/10 rounded-2xl px-3.5 py-2.5 text-xs font-semibold text-white focus:outline-none focus:border-indigo-500/80 transition-all shadow-inner"
+            />
           </div>
 
           {/* Start Date & Time */}

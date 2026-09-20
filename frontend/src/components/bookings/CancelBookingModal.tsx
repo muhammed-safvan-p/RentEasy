@@ -38,7 +38,7 @@ export const CancelBookingModal: React.FC<CancelBookingModalProps> = ({
   if (!cancellingBooking) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="w-full max-w-sm bg-[#18182c] border border-rose-500/30 rounded-3xl p-5 shadow-2xl space-y-4">
         {/* Warning Icon & Title */}
         <div className="flex items-center gap-3">

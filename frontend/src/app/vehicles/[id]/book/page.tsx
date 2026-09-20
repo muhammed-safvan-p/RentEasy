@@ -20,8 +20,10 @@ import {
   toSafeDateISOString,
 } from "@/lib/formatters";
 import { BookingVehicle, CalendarBooking } from "@/types/booking";
+import { VehicleLock } from "@/types";
 import { DateTimeSelector } from "@/components/book/DateTimeSelector";
 import { ConflictAlert } from "@/components/book/ConflictAlert";
+import { LockConflictAlert } from "@/components/book/LockConflictAlert";
 import { CustomerDetailsForm } from "@/components/book/CustomerDetailsForm";
 import { BookingPricingSummary } from "@/components/book/BookingPricingSummary";
 import { ErrorBanner } from "@/components/common/ErrorBanner";
@@ -46,6 +48,7 @@ export default function VehicleBookingPage() {
   // State
   const [vehicle, setVehicle] = useState<BookingVehicle | null>(null);
   const [calendarBookings, setCalendarBookings] = useState<CalendarBooking[]>([]);
+  const [calendarLocks, setCalendarLocks] = useState<VehicleLock[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
@@ -67,11 +70,21 @@ export default function VehicleBookingPage() {
 
   const isAmountOverridden = customTotalAmount !== null;
 
-  // Initialize Default Time Slot (+1 hour from now, for 24 hours)
+  // Initialize Default Time Slot — respects ?date= query param from calendar
   useEffect(() => {
-    const now = new Date();
-    const start = new Date(now);
-    start.setHours(start.getHours() + 1, 0, 0, 0);
+    const params = new URLSearchParams(window.location.search);
+    const dateParam = params.get("date"); // YYYY-MM-DD
+
+    let start: Date;
+    if (dateParam) {
+      // Parse as local date to avoid UTC offset day-shifting
+      const [year, month, day] = dateParam.split("-").map(Number);
+      start = new Date(year, month - 1, day, 9, 0, 0); // 9:00 AM on selected date
+    } else {
+      const now = new Date();
+      start = new Date(now);
+      start.setHours(start.getHours() + 1, 0, 0, 0);
+    }
 
     const end = new Date(start);
     end.setDate(end.getDate() + 1);
@@ -111,11 +124,12 @@ export default function VehicleBookingPage() {
         if (!vehRes.ok) throw new Error("Could not fetch vehicle details");
 
         const vehData = await vehRes.json();
-        const calData = calRes.ok ? await calRes.json() : { bookings: [] };
+        const calData = calRes.ok ? await calRes.json() : { bookings: [], locks: [] };
 
         if (isMounted) {
           setVehicle(vehData);
           setCalendarBookings(calData.bookings || []);
+          setCalendarLocks(calData.locks || []);
         }
       } catch (err: unknown) {
         if (isMounted) {
@@ -173,25 +187,13 @@ export default function VehicleBookingPage() {
     };
   }, [startDateTime, endDateTime]);
 
-  // Calculate Suggested Rent based on vehicle rates
-  const suggestedRent = useMemo(() => {
-    if (!vehicle || !durationInfo || !durationInfo.isValid) return 0;
-    const { totalHours, diffMs } = durationInfo;
-
-    if (vehicle.hourlyRate && vehicle.hourlyRate > 0) {
-      return totalHours * vehicle.hourlyRate;
-    }
-    if (vehicle.dailyRate && vehicle.dailyRate > 0) {
-      const rentalDays = Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
-      return rentalDays * vehicle.dailyRate;
-    }
-    return 0;
-  }, [vehicle, durationInfo]);
+  // Default suggested rent (0 as fixed daily/hourly rates are removed)
+  const suggestedRent = 0;
 
   // Derived effective total amount
   const totalAmount = isAmountOverridden && customTotalAmount !== null ? customTotalAmount : suggestedRent;
 
-  // Overlap Conflict Detection
+  // Overlap Booking Conflict Detection
   const conflictingBooking = useMemo(() => {
     if (!durationInfo || !durationInfo.isValid) return null;
     const start = new Date(startDateTime);
@@ -204,6 +206,19 @@ export default function VehicleBookingPage() {
       return bStart < end && bEnd > start;
     });
   }, [calendarBookings, startDateTime, endDateTime, durationInfo]);
+
+  // Overlap Vehicle Lock Conflict Detection
+  const conflictingLock = useMemo(() => {
+    if (!durationInfo || !durationInfo.isValid) return null;
+    const start = new Date(startDateTime);
+    const end = new Date(endDateTime);
+
+    return calendarLocks.find((l) => {
+      const lStart = new Date(l.startDate);
+      const lEnd = new Date(l.endDate);
+      return lStart < end && lEnd > start;
+    });
+  }, [calendarLocks, startDateTime, endDateTime, durationInfo]);
 
   // Remaining balance calculation
   const remainingBalance = useMemo(() => {
@@ -260,6 +275,11 @@ export default function VehicleBookingPage() {
 
     if (conflictingBooking) {
       setErrorMessage("The vehicle is already booked during this time range. Please pick other dates.");
+      return;
+    }
+
+    if (conflictingLock) {
+      setErrorMessage("The vehicle is locked during this time range. Please pick other dates.");
       return;
     }
 
@@ -521,16 +541,9 @@ export default function VehicleBookingPage() {
           </div>
 
           <div className="text-right shrink-0">
-            <p className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">
-              Standard Rate
-            </p>
-            <p className="text-sm font-extrabold text-white">
-              {vehicle?.dailyRate && vehicle.dailyRate > 0
-                ? `${formatCurrency(vehicle.dailyRate)}/day`
-                : vehicle?.hourlyRate && vehicle.hourlyRate > 0
-                ? `${formatCurrency(vehicle.hourlyRate)}/hr`
-                : "Free / Negotiated"}
-            </p>
+            <span className="text-xs font-semibold px-2.5 py-1 rounded-xl bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">
+              {vehicle?.seatingCapacity || 5} Seater
+            </span>
           </div>
         </div>
       </section>
@@ -540,6 +553,7 @@ export default function VehicleBookingPage() {
         <CustomerDetailsForm
           customerName={customerName}
           onCustomerNameChange={setCustomerName}
+          vehicleId={id}
         />
 
         {/* 4. Schedule & Duration */}
@@ -547,7 +561,7 @@ export default function VehicleBookingPage() {
           startDateTime={startDateTime}
           endDateTime={endDateTime}
           durationInfo={durationInfo}
-          hasConflict={!!conflictingBooking}
+          hasConflict={!!conflictingBooking || !!conflictingLock}
           onStartDateTimeChange={(val) => {
             setStartDateTime(val);
             setCustomTotalAmount(null);
@@ -560,9 +574,13 @@ export default function VehicleBookingPage() {
           onApplyWeekendPreset={handleApplyWeekendPreset}
         />
 
-        {/* Overlap Conflict Card */}
+        {/* Overlap Conflict Cards */}
         <ConflictAlert
           conflictingBooking={conflictingBooking}
+          formatDateNice={formatDateNice}
+        />
+        <LockConflictAlert
+          conflictingLock={conflictingLock}
           formatDateNice={formatDateNice}
         />
 
@@ -609,7 +627,7 @@ export default function VehicleBookingPage() {
 
             <button
               type="submit"
-              disabled={submitting || (durationInfo !== null && !durationInfo.isValid) || !!conflictingBooking}
+              disabled={submitting || (durationInfo !== null && !durationInfo.isValid) || !!conflictingBooking || !!conflictingLock}
               className="btn-primary rounded-2xl px-6 py-3.5 text-sm font-bold flex items-center gap-2 shadow-lg shadow-indigo-500/30 active:scale-95 transition-transform disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {submitting ? (

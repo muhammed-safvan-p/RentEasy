@@ -92,6 +92,18 @@ export default function VehicleBookingsPage() {
     );
   }, [selectedMonth]);
 
+  // Check ?date= query param on initial load to set the correct month
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const dateParam = params.get("date");
+    if (dateParam) {
+      const [year, month] = dateParam.split("-").map(Number);
+      if (year && month) {
+        setSelectedMonth(new Date(year, month - 1, 1));
+      }
+    }
+  }, []);
+
   // Fetch Vehicle Info
   useEffect(() => {
     if (!id) return;
@@ -145,7 +157,18 @@ export default function VehicleBookingsPage() {
         if (!res.ok) throw new Error("Failed to fetch bookings for this month");
         const data = await res.json();
         if (isMounted) {
-          setBookings(data.bookings || []);
+          const loadedBookings: Booking[] = data.bookings || [];
+          setBookings(loadedBookings);
+
+          // Auto-select booking if ?bookingId= is in query parameters
+          const params = new URLSearchParams(window.location.search);
+          const bookingIdParam = params.get("bookingId");
+          if (bookingIdParam) {
+            const match = loadedBookings.find((b) => b._id === bookingIdParam);
+            if (match) {
+              setSelectedBooking(match);
+            }
+          }
         }
       } catch (err: unknown) {
         if (isMounted) {
@@ -181,19 +204,21 @@ export default function VehicleBookingsPage() {
   const monthMetrics = useMemo(() => {
     let totalCount = 0;
     let totalRevenue = 0;
+    let totalCredited = 0;
     let totalDue = 0;
 
     for (const b of bookings) {
       if (!b.isCancelled) {
         totalCount += 1;
-        totalRevenue += b.paidAmount || 0;
+        totalRevenue += b.totalAmount || 0;
+        totalCredited += b.paidAmount || 0;
         if (b.balanceAmount > 0) {
           totalDue += b.balanceAmount;
         }
       }
     }
 
-    return { totalCount, totalRevenue, totalDue };
+    return { totalCount, totalRevenue, totalCredited, totalDue };
   }, [bookings]);
 
   // Handlers
@@ -438,7 +463,8 @@ export default function VehicleBookingsPage() {
           <div className="w-10 h-10 rounded-full bg-[#1a1a2e]" />
         </div>
         <div className="h-12 bg-[#1a1a2e] rounded-2xl" />
-        <div className="grid grid-cols-3 gap-2.5">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <div className="h-20 bg-[#1a1a2e] rounded-2xl" />
           <div className="h-20 bg-[#1a1a2e] rounded-2xl" />
           <div className="h-20 bg-[#1a1a2e] rounded-2xl" />
           <div className="h-20 bg-[#1a1a2e] rounded-2xl" />
@@ -571,6 +597,7 @@ export default function VehicleBookingsPage() {
         editTotalAmount={editTotalAmount}
         submittingEdit={submittingEdit}
         editError={editError}
+        vehicleId={id}
         formatCurrency={formatCurrency}
         getBookingDurationLabel={getBookingDurationLabel}
         onClose={() => setEditingBooking(null)}
