@@ -14,7 +14,7 @@ class AdminController {
   // GET /api/admin/vehicles
   async getVehicles(req, res, next) {
     try {
-      const vehicles = await adminService.getVehicles();
+      const vehicles = await adminService.getVehicles(req.query);
       res.status(200).json(vehicles);
     } catch (error) {
       next(error);

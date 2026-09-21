@@ -21,10 +21,11 @@ const protect = async (req, res, next) => {
         return res.status(401).json({ message: 'User not found' });
       }
       if (req.user.isBlock) {
+        const isProd = process.env.NODE_ENV === 'production';
         res.clearCookie('token', {
           httpOnly: true,
-          secure: process.env.NODE_ENV === 'production',
-          sameSite: 'lax',
+          secure: isProd,
+          sameSite: isProd ? 'none' : 'lax',
         });
         return res.status(403).json({
           message: 'Your account has been blocked. Please contact support: +91 9496432072',
@@ -55,13 +56,16 @@ const authorizeVehicleAccess = async (req, res, next) => {
       return res.status(400).json({ message: 'Vehicle ID is required' });
     }
 
-    const vehicle = await vehicleRepository.findById(vehicleId);
+    const vehicle = await vehicleRepository.findById(vehicleId, [
+      { path: 'ownerIds', select: 'username' },
+      { path: 'operationalNotes.createdBy', select: 'username' },
+    ]);
     if (!vehicle) {
       return res.status(404).json({ message: 'Vehicle not found' });
     }
 
     const isOwner = vehicle.ownerIds.some(
-      (id) => id.toString() === req.user._id.toString()
+      (id) => (id._id || id).toString() === req.user._id.toString()
     );
     const isAdmin = req.user.role === 'admin';
 

@@ -31,29 +31,25 @@ const errorHandler = (err, req, res, next) => {
   err.status = err.status || 'error';
 
   if (process.env.NODE_ENV === 'production') {
-    let error = { ...err };
-    error.message = err.message;
-    error.name = err.name;
+    let error = err;
 
     // Handle mongoose specific errors
     if (error.name === 'CastError') {
       const message = `Invalid ${error.path}: ${error.value}.`;
       error = new AppError(message, 400);
-    }
-    if (error.code === 11000) {
-      const value = err.errmsg ? err.errmsg.match(/(["'])(\\?.)*?\1/)[0] : 'duplicate value';
+    } else if (error.code === 11000) {
+      const value = error.keyValue
+        ? JSON.stringify(error.keyValue)
+        : (error.message && error.message.match(/(["'])(\\?.)*?\1/) ? error.message.match(/(["'])(\\?.)*?\1/)[0] : 'duplicate value');
       const message = `Duplicate field value: ${value}. Please use another value!`;
       error = new AppError(message, 400);
-    }
-    if (error.name === 'ValidationError') {
-      const errors = Object.values(error.errors).map(el => el.message);
+    } else if (error.name === 'ValidationError') {
+      const errors = Object.values(error.errors || {}).map(el => el.message);
       const message = `Invalid input data. ${errors.join('. ')}`;
       error = new AppError(message, 400);
-    }
-    if (error.name === 'JsonWebTokenError') {
+    } else if (error.name === 'JsonWebTokenError') {
       error = new AppError('Invalid token. Please log in again.', 401);
-    }
-    if (error.name === 'TokenExpiredError') {
+    } else if (error.name === 'TokenExpiredError') {
       error = new AppError('Your token has expired! Please log in again.', 401);
     }
 

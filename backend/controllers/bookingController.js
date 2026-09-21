@@ -15,6 +15,7 @@ class BookingController {
         endDateTime,
         totalAmount,
         createdBy: req.user._id,
+        user: req.user,
       });
 
       res.status(201).json({
@@ -34,7 +35,7 @@ class BookingController {
   async updateBooking(req, res, next) {
     try {
       const { id } = req.params;
-      const updatedBooking = await bookingService.updateBooking(id, req.body);
+      const updatedBooking = await bookingService.updateBooking(id, req.body, req.user);
 
       res.status(200).json({
         message: 'Booking updated successfully',
@@ -59,6 +60,7 @@ class BookingController {
         refundPaymentMethod,
         cancellationNote,
         cancelledBy: req.user._id,
+        user: req.user,
       });
 
       res.status(200).json({
@@ -87,6 +89,7 @@ class BookingController {
         note,
         paidAt,
         recordedBy: req.user._id,
+        user: req.user,
       });
 
       res.status(201).json({
@@ -108,7 +111,7 @@ class BookingController {
   async listPayments(req, res, next) {
     try {
       const { id } = req.params;
-      const result = await bookingService.listPayments(id);
+      const result = await bookingService.listPayments(id, req.user);
       res.status(200).json(result);
     } catch (error) {
       next(error);
@@ -121,7 +124,7 @@ class BookingController {
    */
   async listBookings(req, res, next) {
     try {
-      const result = await bookingService.listBookings(req.query);
+      const result = await bookingService.listBookings(req.query, req.user);
       res.status(200).json(result);
     } catch (error) {
       next(error);
@@ -135,7 +138,7 @@ class BookingController {
   async getVehicleCalendar(req, res, next) {
     try {
       const vehicleId = req.params.vehicleId || req.params.id;
-      const result = await bookingService.getVehicleCalendar(vehicleId, req.query);
+      const result = await bookingService.getVehicleCalendar(vehicleId, req.query, req.user);
       res.status(200).json(result);
     } catch (error) {
       next(error);

@@ -24,8 +24,8 @@ class WalletController {
   async getWalletTransactions(req, res, next) {
     try {
       const vehicleId = req.params.vehicleId;
-      const { month } = req.query;
-      const result = await walletService.getWalletTransactions(vehicleId, month);
+      const { month, page, limit } = req.query;
+      const result = await walletService.getWalletTransactions(vehicleId, month, { page, limit });
       res.status(200).json(result);
     } catch (error) {
       next(error);

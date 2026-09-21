@@ -4,6 +4,9 @@ class VehicleController {
   // GET /api/vehicles/:id
   async getVehicle(req, res, next) {
     try {
+      if (req.vehicle) {
+        return res.status(200).json(req.vehicle);
+      }
       const vehicleId = req.params.vehicleId || req.params.id;
       const vehicle = await vehicleService.getVehicleById(vehicleId);
       res.status(200).json(vehicle);
@@ -17,7 +20,7 @@ class VehicleController {
     try {
       const vehicleId = req.params.vehicleId || req.params.id;
       const { text } = req.body;
-      const result = await vehicleService.addOperationalNote(vehicleId, text, req.user._id);
+      const result = await vehicleService.addOperationalNote(req.vehicle || vehicleId, text, req.user._id);
 
       res.status(201).json({
         message: 'Note added successfully',
@@ -34,7 +37,7 @@ class VehicleController {
     try {
       const vehicleId = req.params.vehicleId || req.params.id;
       const { noteId } = req.params;
-      const result = await vehicleService.deleteOperationalNote(vehicleId, noteId, req.user);
+      const result = await vehicleService.deleteOperationalNote(req.vehicle || vehicleId, noteId, req.user);
 
       res.status(200).json({
         message: 'Note deleted successfully',
