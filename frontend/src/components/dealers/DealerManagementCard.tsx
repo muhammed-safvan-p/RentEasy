@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { API_BASE_URL as baseUrl } from "@/lib/api";
+import { api } from "@/lib/api";
+import { logger } from "@/lib/logger";
 import { Dealer } from "@/types";
 import {
   Briefcase,
@@ -40,23 +41,20 @@ export function DealerManagementCard({ vehicleId }: DealerManagementCardProps) {
   const fetchDealers = useCallback(async () => {
     if (!vehicleId) return;
     try {
-      setLoading(true);
-      const res = await fetch(`${baseUrl}/api/vehicles/${vehicleId}/dealers`, {
-        credentials: "include",
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setDealers(data.dealers || []);
-      }
-    } catch (err) {
-      console.error("Failed to load dealers:", err);
+      const data = await api.get<{ dealers: Dealer[] }>(`/api/vehicles/${vehicleId}/dealers`);
+      setDealers(data.dealers || []);
+    } catch (err: unknown) {
+      logger.error("Failed to load dealers:", err);
     } finally {
       setLoading(false);
     }
   }, [vehicleId]);
 
   useEffect(() => {
-    fetchDealers();
+    const timer = setTimeout(() => {
+      fetchDealers();
+    }, 0);
+    return () => clearTimeout(timer);
   }, [fetchDealers]);
 
   // Handle Add Dealer
@@ -72,17 +70,9 @@ export function DealerManagementCard({ vehicleId }: DealerManagementCardProps) {
 
     setAdding(true);
     try {
-      const res = await fetch(`${baseUrl}/api/vehicles/${vehicleId}/dealers`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ name: trimmed }),
+      const data = await api.post<{ dealer: Dealer }>(`/api/vehicles/${vehicleId}/dealers`, {
+        name: trimmed,
       });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.message || "Failed to create dealer");
-      }
 
       setDealers((prev) => {
         const updated = [...prev, data.dealer];
@@ -121,17 +111,9 @@ export function DealerManagementCard({ vehicleId }: DealerManagementCardProps) {
 
     setSavingEdit(true);
     try {
-      const res = await fetch(`${baseUrl}/api/vehicles/${vehicleId}/dealers/${dealerId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ name: trimmed }),
+      const data = await api.patch<{ dealer: Dealer }>(`/api/vehicles/${vehicleId}/dealers/${dealerId}`, {
+        name: trimmed,
       });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.message || "Failed to update dealer");
-      }
 
       setDealers((prev) =>
         prev
@@ -150,16 +132,7 @@ export function DealerManagementCard({ vehicleId }: DealerManagementCardProps) {
   const handleDelete = async (dealerId: string) => {
     setDeletingId(dealerId);
     try {
-      const res = await fetch(`${baseUrl}/api/vehicles/${vehicleId}/dealers/${dealerId}`, {
-        method: "DELETE",
-        credentials: "include",
-      });
-
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.message || "Failed to delete dealer");
-      }
-
+      await api.delete(`/api/vehicles/${vehicleId}/dealers/${dealerId}`);
       setDealers((prev) => prev.filter((d) => d._id !== dealerId));
       setDeleteConfirmId(null);
     } catch (err: unknown) {

@@ -1,14 +1,11 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
-import { DayPicker } from "react-day-picker";
-import "react-day-picker/style.css";
 import {
   ArrowLeft,
-  Calendar as CalendarIcon,
   Wallet as WalletIcon,
   ShieldAlert,
   ChevronRight,
@@ -19,25 +16,18 @@ import {
   X,
   AlertCircle,
   Car,
-  CalendarDays,
-  CalendarPlus,
   UserCheck,
-  Lock,
-  Unlock,
-  BookOpen,
-  CalendarX2,
-  Loader2,
+  CalendarDays,
 } from "lucide-react";
 
 import useSWR, { mutate } from "swr";
-import { fetcher, API_BASE_URL as baseUrl } from "@/lib/api";
+import { fetcher, api, ApiError } from "@/lib/api";
 import { useVehicleDetail, useVehicleStatus, useVehicleWallet, invalidateVehicleData } from "@/hooks/useVehicleData";
 import {
   formatCurrency,
   formatDateNice,
   formatDateTimeNice,
   formatDateTimeShortYear,
-  formatMonthParam,
   getBookingDurationDays,
   getBookingDurationLabel,
   getLocalTodayDateString,
@@ -45,6 +35,8 @@ import {
 } from "@/lib/formatters";
 
 import { Booking, BookingPayment, VehicleLock } from "@/types";
+import { VehicleCalendarView } from "@/components/vehicles/VehicleCalendarView";
+import { VehicleLockSection } from "@/components/vehicles/VehicleLockSection";
 import { BookingDetailModal } from "@/components/bookings/BookingDetailModal";
 import { EditBookingModal } from "@/components/bookings/EditBookingModal";
 import { OverpayWarningModal } from "@/components/bookings/OverpayWarningModal";
@@ -102,33 +94,42 @@ export default function VehicleDetailPage() {
   const { status, isLoading: statusLoading, error: statusError } = useVehicleStatus(id);
   const { wallet, isLoading: walletLoading, error: walletError } = useVehicleWallet(id);
 
-  const monthParam = formatMonthParam(currentMonth);
-  const swrKey = id ? `/api/vehicles/${id}/bookings?month=${monthParam}` : null;
+  const from = useMemo(
+    () => new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 20).toISOString(),
+    [currentMonth]
+  );
+  const to = useMemo(
+    () => new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 10).toISOString(),
+    [currentMonth]
+  );
+  const swrKey = id
+    ? `/api/vehicles/${id}/calendar?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`
+    : null;
   const {
     data: monthlyData,
     isLoading: bookingsLoading,
     error: bookingsError,
   } = useSWR<MonthlyData>(swrKey, fetcher);
 
-  const bookings = monthlyData?.bookings || [];
-  const locks = monthlyData?.locks || [];
+  const bookings = useMemo(() => monthlyData?.bookings || [], [monthlyData]);
+  const locks = useMemo(() => monthlyData?.locks || [], [monthlyData]);
 
   const loading = vehicleLoading || statusLoading || walletLoading;
   const calendarLoading = bookingsLoading;
 
   const anyError = vehicleError || statusError || walletError || bookingsError;
-  const errorStatus = anyError ? ((anyError as any).status || 500) : null;
+  const errorStatus = anyError ? ((anyError as ApiError).status || 500) : null;
   const errorMessage = anyError
-    ? (anyError as any).status === 403
+    ? (anyError as ApiError).status === 403
       ? "You do not have permission to view this vehicle."
-      : (anyError as any).status === 404
+      : (anyError as ApiError).status === 404
       ? "Vehicle not found."
       : anyError.message || "An unexpected error occurred."
     : "";
 
   // Auth redirect if 401
   useEffect(() => {
-    if (anyError && (anyError as any).status === 401) {
+    if (anyError && (anyError as ApiError).status === 401) {
       router.push("/login");
     }
   }, [anyError, router]);
@@ -272,18 +273,11 @@ export default function VehicleDetailPage() {
     setLockError("");
 
     try {
-      const res = await fetch(`${baseUrl}/api/vehicles/${id}/locks`, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          startDate: new Date(lockStartDateTime).toISOString(),
-          endDate: new Date(lockEndDateTime).toISOString(),
-          reason: lockReason.trim(),
-        }),
+      await api.post(`/api/vehicles/${id}/locks`, {
+        startDate: new Date(lockStartDateTime).toISOString(),
+        endDate: new Date(lockEndDateTime).toISOString(),
+        reason: lockReason.trim(),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Failed to lock vehicle");
 
       // Refresh calendar data
       await mutate(swrKey);
@@ -299,17 +293,13 @@ export default function VehicleDetailPage() {
   const handleDeleteLock = async () => {
     if (!selectedLock) return;
     setDeletingLock(true);
+    setLockError("");
     try {
-      const res = await fetch(`${baseUrl}/api/vehicles/${id}/locks/${selectedLock._id}`, {
-        method: "DELETE",
-        credentials: "include",
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Failed to delete lock");
+      await api.delete(`/api/vehicles/${id}/locks/${selectedLock._id}`);
       await mutate(swrKey);
       clearSelections();
-    } catch (err) {
-      // Silent — could show a toast in future
+    } catch (err: unknown) {
+      setLockError(err instanceof Error ? err.message : "Failed to release lock. Please try again.");
     } finally {
       setDeletingLock(false);
     }
@@ -326,15 +316,10 @@ export default function VehicleDetailPage() {
     setPaymentsLoading(true);
 
     try {
-      const res = await fetch(`${baseUrl}/api/bookings/${booking._id}/payments`, {
-        credentials: "include",
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setBookingPayments(data.payments || []);
-      }
-    } catch {
-      // Non-blocking
+      const data = await api.get<{ payments: BookingPayment[] }>(`/api/bookings/${booking._id}/payments`);
+      setBookingPayments(data.payments || []);
+    } catch (err: unknown) {
+      setPaymentError(err instanceof Error ? err.message : "Failed to load payment history. Please try again.");
     } finally {
       setPaymentsLoading(false);
     }
@@ -369,21 +354,14 @@ export default function VehicleDetailPage() {
     setOverpayConfirmData(null);
 
     try {
-      const res = await fetch(`${baseUrl}/api/bookings/${activeModalBooking._id}/payments`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
+      const data = await api.post<{ booking: Booking; payment?: BookingPayment }>(
+        `/api/bookings/${activeModalBooking._id}/payments`,
+        {
           amount: numAmount,
           paymentMethod: partMethod,
           note: partNote.trim() || `Part-payment via ${partMethod}`,
-        }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.message || "Failed to record payment");
-      }
+        }
+      );
 
       const updatedBooking = data.booking;
       setActiveModalBooking(updatedBooking);
@@ -392,7 +370,7 @@ export default function VehicleDetailPage() {
       );
 
       if (data.payment) {
-        setBookingPayments((prev) => [data.payment, ...prev]);
+        setBookingPayments((prev) => [data.payment!, ...prev]);
       }
 
       setPartAmount(updatedBooking.balanceAmount > 0 ? String(updatedBooking.balanceAmount) : "");
@@ -445,28 +423,12 @@ export default function VehicleDetailPage() {
     setEditError("");
 
     try {
-      const res = await fetch(`${baseUrl}/api/bookings/${editingBooking._id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          customerName: editCustomerName.trim(),
-          startDateTime: start.toISOString(),
-          endDateTime: end.toISOString(),
-          totalAmount: numTotal,
-        }),
+      const data = await api.patch<{ booking: Booking }>(`/api/bookings/${editingBooking._id}`, {
+        customerName: editCustomerName.trim(),
+        startDateTime: start.toISOString(),
+        endDateTime: end.toISOString(),
+        totalAmount: numTotal,
       });
-
-      let data: any = null;
-      try {
-        data = await res.json();
-      } catch {
-        throw new Error(`Server returned unexpected response (${res.status} ${res.statusText})`);
-      }
-
-      if (!res.ok) {
-        throw new Error(data?.message || "Failed to update booking details");
-      }
 
       const updated = data.booking;
       setEditingBooking(null);
@@ -681,53 +643,16 @@ export default function VehicleDetailPage() {
             <div className="absolute -top-12 -right-12 w-40 h-40 bg-indigo-500/10 blur-3xl rounded-full pointer-events-none" />
             <div className="absolute -bottom-8 -left-8 w-32 h-32 bg-rose-500/8 blur-3xl rounded-full pointer-events-none" />
 
-            {/* Section Header */}
-            <div className="flex items-center justify-between px-5 pt-5 pb-0 relative z-10">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
-                  <CalendarIcon className="w-4 h-4" />
-                </div>
-                <div>
-                  <h2 className="text-sm font-bold text-white tracking-wide">Booking Calendar</h2>
-                  <p className="text-[11px] text-slate-500 mt-px">Tap a date to view details or take action</p>
-                </div>
-              </div>
-              {calendarLoading && (
-                <span className="text-[11px] text-indigo-400 animate-pulse font-medium">Updating&hellip;</span>
-              )}
-            </div>
-
-            {/* Calendar */}
-            <div className="px-3 pt-3 pb-1 relative z-10">
-              <DayPicker
-                className="renteasy-calendar"
-                month={currentMonth}
-                onMonthChange={handleMonthChange}
-                modifiers={{ booked: bookedDays, locked: lockedDays, selectedBooking: selectedBookingDays }}
-                modifiersClassNames={{ booked: "rdp-booked", locked: "rdp-locked", selectedBooking: "rdp-selected-booking" }}
-                onDayClick={handleDayClick}
-              />
-            </div>
-
-            {/* Legend */}
-            <div className="flex items-center justify-center gap-5 pb-4 text-[11px] text-slate-500 relative z-10 flex-wrap px-4">
-              <div className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-rose-500/25 border border-rose-400/50" />
-                <span>Booked</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-amber-500/25 border border-amber-400/50" />
-                <span>Locked</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full border border-indigo-400 bg-indigo-500/10" />
-                <span>Today</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-slate-700" />
-                <span>Available</span>
-              </div>
-            </div>
+            {/* Calendar Component */}
+            <VehicleCalendarView
+              currentMonth={currentMonth}
+              onMonthChange={handleMonthChange}
+              bookedDays={bookedDays}
+              lockedDays={lockedDays}
+              selectedBookingDays={selectedBookingDays}
+              onDayClick={handleDayClick}
+              calendarLoading={calendarLoading}
+            />
 
             {/* ── Selected Booking(s) Card ── */}
             {selectedBookings.length > 0 && (
@@ -875,232 +800,38 @@ export default function VehicleDetailPage() {
               </div>
             )}
 
-            {/* ── Selected Lock Card ── */}
-            {selectedLock && (
-              <div className="mx-5 mb-5 animate-in fade-in slide-in-from-bottom-2 duration-200">
-                <div className="bg-gradient-to-br from-amber-500/8 to-amber-600/5 border border-amber-500/30 rounded-2xl p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                      <div className="w-6 h-6 rounded-lg bg-amber-500/15 border border-amber-500/25 flex items-center justify-center">
-                        <Lock className="w-3.5 h-3.5 text-amber-400" />
-                      </div>
-                      <span className="text-xs font-bold text-white">Vehicle Locked</span>
-                    </div>
-                    <button
-                      onClick={clearSelections}
-                      className="w-6 h-6 rounded-lg bg-white/5 hover:bg-white/10 flex items-center justify-center text-slate-400 hover:text-white transition-colors cursor-pointer"
-                      aria-label="Close lock details"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                  <div className="space-y-2 text-xs">
-                    <div className="flex justify-between items-start">
-                      <span className="text-slate-400 flex items-center gap-1.5">
-                        <CalendarDays className="w-3.5 h-3.5 text-slate-500" />Starting
-                      </span>
-                      <span className="text-amber-200 font-semibold text-right">
-                        {formatDateTimeShortYear(selectedLock.startDate)}
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-start">
-                      <span className="text-slate-400 flex items-center gap-1.5">
-                        <CalendarDays className="w-3.5 h-3.5 text-slate-500" />Ending
-                      </span>
-                      <span className="text-amber-200 font-semibold text-right">
-                        {formatDateTimeShortYear(selectedLock.endDate)}
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-slate-400 flex items-center gap-1.5">
-                        <Clock className="w-3.5 h-3.5 text-slate-500" />Duration
-                      </span>
-                      <span className="text-slate-200 font-medium">
-                        {getBookingDurationLabel(selectedLock.startDate, selectedLock.endDate)}
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-start">
-                      <span className="text-slate-400 flex items-center gap-1.5">
-                        <CalendarX2 className="w-3.5 h-3.5 text-slate-500" />Reason
-                      </span>
-                      <span className="text-slate-200 font-medium text-right max-w-[60%]">{selectedLock.reason}</span>
-                    </div>
-                    {selectedLock.lockedBy && (
-                      <div className="flex justify-between items-center">
-                        <span className="text-slate-500 flex items-center gap-1.5">
-                          <UserCheck className="w-3.5 h-3.5 text-slate-500" />Locked By
-                        </span>
-                        <span className="font-medium text-slate-300">{selectedLock.lockedBy.username}</span>
-                      </div>
-                    )}
-                    <div className="pt-2 mt-1 border-t border-white/5">
-                      <button
-                        onClick={handleDeleteLock}
-                        disabled={deletingLock}
-                        className="w-full flex items-center justify-center gap-1.5 py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/25 text-amber-300 hover:text-white text-xs font-semibold transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
-                      >
-                        {deletingLock ? (
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        ) : (
-                          <Unlock className="w-3.5 h-3.5" />
-                        )}
-                        {deletingLock ? "Releasing…" : "Release Lock"}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* ── Free Date Action Card ── */}
-            {selectedDate && selectedBookings.length === 0 && !selectedLock && (
-              <div className="mx-5 mb-5 animate-in fade-in slide-in-from-bottom-2 duration-200">
-                <div className="bg-gradient-to-br from-indigo-500/8 to-indigo-600/5 border border-indigo-500/25 rounded-2xl p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                      <div className="w-6 h-6 rounded-lg bg-indigo-500/15 border border-indigo-500/20 flex items-center justify-center">
-                        <CalendarDays className="w-3.5 h-3.5 text-indigo-400" />
-                      </div>
-                      <div>
-                        <span className="text-xs font-bold text-white">Available Date</span>
-                        <p className="text-[10px] text-slate-400">{formatDateNice(selectedDate)}</p>
-                      </div>
-                    </div>
-                    <button
-                      onClick={clearSelections}
-                      className="w-6 h-6 rounded-lg bg-white/5 hover:bg-white/10 flex items-center justify-center text-slate-400 hover:text-white transition-colors cursor-pointer"
-                      aria-label="Close action card"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-
-                  {!showLockForm ? (
-                    /* ── Two Action Buttons ── */
-                    <div className="space-y-2 pt-1">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowLockForm(true);
-                          setLockError("");
-                        }}
-                        className="w-full flex items-center justify-between py-2.5 px-3.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-200 hover:text-white text-xs font-bold transition-all active:scale-95 group cursor-pointer shadow-sm"
-                      >
-                        <div className="flex items-center gap-2">
-                          <Lock className="w-3.5 h-3.5 text-amber-400" />
-                          <span>Lock Vehicle</span>
-                        </div>
-                        <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform text-amber-400" />
-                      </button>
-
-                      <Link
-                        href={`/vehicles/${id}/book?date=${getLocalTodayDateString(selectedDate)}`}
-                        className="w-full flex items-center justify-between py-2.5 px-3.5 rounded-xl bg-indigo-500/15 hover:bg-indigo-500/25 border border-indigo-500/30 text-indigo-200 hover:text-white text-xs font-bold transition-all active:scale-95 group cursor-pointer shadow-sm"
-                      >
-                        <div className="flex items-center gap-2">
-                          <BookOpen className="w-3.5 h-3.5 text-indigo-400" />
-                          <span>Record Booking from this Day</span>
-                        </div>
-                        <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform text-indigo-400" />
-                      </Link>
-                    </div>
-                  ) : (
-                    /* ── Lock Form ── */
-                    <div className="bg-[#12121f]/80 border border-amber-500/20 rounded-xl p-3.5 space-y-3">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-1.5 text-[11px] font-bold text-amber-300 uppercase tracking-wider">
-                          <Lock className="w-3.5 h-3.5 text-amber-400" />
-                          Lock Vehicle Schedule
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setShowLockForm(false);
-                            setLockError("");
-                          }}
-                          className="text-[11px] text-slate-400 hover:text-slate-200 transition-colors"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-
-                      <form onSubmit={handleLockSubmit} className="space-y-2.5">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                          <div>
-                            <label className="block text-[10px] font-medium text-slate-400 mb-1">
-                              Starting Date & Time
-                            </label>
-                            <input
-                              type="datetime-local"
-                              required
-                              value={lockStartDateTime}
-                              onChange={(e) => setLockStartDateTime(e.target.value)}
-                              className="w-full bg-[#101020] border border-white/10 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500/60 transition-all [color-scheme:dark]"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-[10px] font-medium text-slate-400 mb-1">
-                              Ending Date & Time
-                            </label>
-                            <input
-                              type="datetime-local"
-                              required
-                              value={lockEndDateTime}
-                              min={lockStartDateTime}
-                              onChange={(e) => setLockEndDateTime(e.target.value)}
-                              className="w-full bg-[#101020] border border-white/10 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500/60 transition-all [color-scheme:dark]"
-                            />
-                          </div>
-                        </div>
-
-                        <div>
-                          <label className="block text-[10px] font-medium text-slate-400 mb-1">Reason</label>
-                          <input
-                            type="text"
-                            required
-                            placeholder="e.g. Maintenance, Personal use, Servicing…"
-                            value={lockReason}
-                            onChange={(e) => setLockReason(e.target.value)}
-                            className="w-full bg-[#101020] border border-white/10 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500/60 transition-all"
-                          />
-                        </div>
-
-                        {lockError && (
-                          <p className="text-[11px] text-rose-400 bg-rose-500/10 border border-rose-500/20 rounded-lg px-2.5 py-1.5">
-                            {lockError}
-                          </p>
-                        )}
-
-                        <div className="flex items-center gap-2 pt-1">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setShowLockForm(false);
-                              setLockError("");
-                            }}
-                            className="w-1/3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 text-xs font-semibold transition-all cursor-pointer"
-                          >
-                            Back
-                          </button>
-                          <button
-                            type="submit"
-                            disabled={lockSubmitting || !lockReason.trim() || !lockStartDateTime || !lockEndDateTime}
-                            className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-200 hover:text-white text-xs font-bold transition-all active:scale-95 disabled:opacity-50 cursor-pointer shadow-sm"
-                          >
-                            {lockSubmitting ? (
-                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                            ) : (
-                              <Lock className="w-3.5 h-3.5" />
-                            )}
-                            {lockSubmitting ? "Locking…" : "Confirm Lock"}
-                          </button>
-                        </div>
-                      </form>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
+            {/* ── Lock Details or Free Date Action Section ── */}
+            <VehicleLockSection
+              vehicleId={id || ""}
+              selectedLock={selectedLock}
+              selectedDate={selectedDate}
+              hasSelectedBookings={selectedBookings.length > 0}
+              showLockForm={showLockForm}
+              lockStartDateTime={lockStartDateTime}
+              lockEndDateTime={lockEndDateTime}
+              lockReason={lockReason}
+              lockSubmitting={lockSubmitting}
+              deletingLock={deletingLock}
+              lockError={lockError}
+              onClearSelections={clearSelections}
+              onShowLockForm={() => {
+                setShowLockForm(true);
+                setLockError("");
+              }}
+              onHideLockForm={() => {
+                setShowLockForm(false);
+                setLockError("");
+              }}
+              onLockStartChange={setLockStartDateTime}
+              onLockEndChange={setLockEndDateTime}
+              onLockReasonChange={setLockReason}
+              onLockSubmit={handleLockSubmit}
+              onDeleteLock={handleDeleteLock}
+              formatDateNice={formatDateNice}
+              formatDateTimeShortYear={formatDateTimeShortYear}
+              getBookingDurationLabel={getBookingDurationLabel}
+              getLocalTodayDateString={getLocalTodayDateString}
+            />
           </section>
         </div>
       )}

@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { API_BASE_URL as baseUrl } from "@/lib/api";
+import { api } from "@/lib/api";
+import { logger } from "@/lib/logger";
 import { Dealer } from "@/types";
 import {
   Building2,
@@ -10,7 +11,6 @@ import {
   Check,
   Loader2,
   X,
-  Sparkles,
 } from "lucide-react";
 
 interface DealerComboboxInputProps {
@@ -44,27 +44,23 @@ export const DealerComboboxInput: React.FC<DealerComboboxInputProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Fetch dealers for vehicle
   const fetchDealers = useCallback(async () => {
     if (!vehicleId) return;
     try {
-      setLoading(true);
-      const res = await fetch(`${baseUrl}/api/vehicles/${vehicleId}/dealers`, {
-        credentials: "include",
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setDealers(data.dealers || []);
-      }
-    } catch (err) {
-      console.error("Failed to load dealers in combobox:", err);
+      const data = await api.get<{ dealers: Dealer[] }>(`/api/vehicles/${vehicleId}/dealers`);
+      setDealers(data.dealers || []);
+    } catch (err: unknown) {
+      logger.error("Failed to load dealers in combobox:", err);
     } finally {
       setLoading(false);
     }
   }, [vehicleId]);
 
   useEffect(() => {
-    fetchDealers();
+    const timer = setTimeout(() => {
+      fetchDealers();
+    }, 0);
+    return () => clearTimeout(timer);
   }, [fetchDealers]);
 
   // Click outside to close dropdown
@@ -104,17 +100,9 @@ export const DealerComboboxInput: React.FC<DealerComboboxInputProps> = ({
     setSaveSuccessMessage("");
 
     try {
-      const res = await fetch(`${baseUrl}/api/vehicles/${vehicleId}/dealers`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ name: trimmedValue }),
+      const data = await api.post<{ dealer: Dealer }>(`/api/vehicles/${vehicleId}/dealers`, {
+        name: trimmedValue,
       });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.message || "Failed to save dealer");
-      }
 
       setDealers((prev) => {
         const updated = [...prev, data.dealer];

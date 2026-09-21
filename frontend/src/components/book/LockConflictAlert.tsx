@@ -21,7 +21,7 @@ export const LockConflictAlert: React.FC<LockConflictAlertProps> = ({
       <div className="flex-1">
         <p className="font-bold text-amber-200">Vehicle Locked for Selected Dates!</p>
         <p className="text-[11px] text-amber-300/90 mt-0.5 leading-relaxed">
-          Locked for <span className="font-semibold text-white">"{conflictingLock.reason}"</span> from{" "}
+          Locked for <span className="font-semibold text-white">&quot;{conflictingLock.reason}&quot;</span> from{" "}
           {formatDateNice(conflictingLock.startDate)} to {formatDateNice(conflictingLock.endDate)}.
         </p>
       </div>
