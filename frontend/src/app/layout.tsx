@@ -3,6 +3,8 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import BottomNav from "@/components/BottomNav";
 import Providers from "@/components/Providers";
+import InstallPrompt from "@/components/InstallPrompt";
+import IOSInstallBanner from "@/components/IOSInstallBanner";
 
 const inter = Inter({
   variable: "--font-sans",
@@ -13,6 +15,18 @@ export const metadata: Metadata = {
   title: "RentEasy",
   description: "Vehicle rental booking and fleet management system.",
   manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "RentEasy",
+  },
+  icons: {
+    icon: "/favicon.ico",
+    apple: "/icons/apple-touch-icon.png",
+  },
+  other: {
+    "mobile-web-app-capable": "yes",
+  },
 };
 
 export const viewport: Viewport = {
@@ -31,6 +45,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <div className="app-shell w-full flex flex-col pb-16">
           <Providers>
             <main className="flex-1 w-full relative">{children}</main>
+            <InstallPrompt />
+            <IOSInstallBanner />
             <BottomNav />
           </Providers>
         </div>
