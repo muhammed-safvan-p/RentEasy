@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const { Schema } = mongoose;
+const { roundCurrency } = require('../utils/currencyUtils');
 
 const walletTransactionSchema = new Schema(
   {
@@ -27,10 +28,12 @@ const walletTransactionSchema = new Schema(
       type: Number,
       required: true,
       min: 0.01,
+      set: roundCurrency,
     },
     note: {
       type: String,
       trim: true,
+      maxlength: [500, 'Transaction note cannot exceed 500 characters'],
     },
     transactionDate: {
       type: Date,
@@ -56,6 +59,8 @@ const walletTransactionSchema = new Schema(
 );
 
 walletTransactionSchema.index({ walletId: 1, transactionDate: -1 });
-walletTransactionSchema.index({ vehicleId: 1, transactionDate: -1 });
+walletTransactionSchema.index({ vehicleId: 1, transactionDate: -1, createdAt: -1 });
+walletTransactionSchema.index({ vehicleId: 1, type: 1, amount: 1 });
+walletTransactionSchema.index({ bookingId: 1 }, { sparse: true });
 
 module.exports = mongoose.model('WalletTransaction', walletTransactionSchema);

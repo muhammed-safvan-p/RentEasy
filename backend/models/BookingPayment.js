@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const { Schema } = mongoose;
+const { roundCurrency } = require('../utils/currencyUtils');
 
 const bookingPaymentSchema = new Schema(
   {
@@ -17,6 +18,7 @@ const bookingPaymentSchema = new Schema(
       type: Number,
       required: true,
       min: 0.01,
+      set: roundCurrency,
     },
     paymentMethod: {
       type: String,
@@ -35,11 +37,14 @@ const bookingPaymentSchema = new Schema(
     note: {
       type: String,
       trim: true,
+      maxlength: [500, 'Payment note cannot exceed 500 characters'],
     },
   },
   { timestamps: true }
 );
 
 bookingPaymentSchema.index({ bookingId: 1, paidAt: -1 });
+bookingPaymentSchema.index({ bookingId: 1, amount: 1 });
+bookingPaymentSchema.index({ vehicleId: 1, paidAt: -1 });
 
 module.exports = mongoose.model('BookingPayment', bookingPaymentSchema);

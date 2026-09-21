@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const { Schema } = mongoose;
+const { roundCurrency } = require('../utils/currencyUtils');
 
 const bookingSchema = new Schema(
   {
@@ -16,7 +17,9 @@ const bookingSchema = new Schema(
     customerName: {
       type: String,
       trim: true,
-      required: true,
+      required: [true, 'Customer name is required'],
+      minlength: [2, 'Customer name must be at least 2 characters'],
+      maxlength: [100, 'Customer name cannot exceed 100 characters'],
     },
     startDateTime: {
       type: Date,
@@ -29,19 +32,25 @@ const bookingSchema = new Schema(
     totalAmount: {
       type: Number,
       required: true,
-      min: 0,
+      min: [0, 'Total amount must be non-negative'],
+      set: roundCurrency,
     },
     paidAmount: {
       type: Number,
       default: 0,
+      min: [0, 'Paid amount cannot be negative'],
+      set: roundCurrency,
     },
     balanceAmount: {
       type: Number,
       required: true,
+      set: roundCurrency,
     },
     refundedAmount: {
       type: Number,
       default: 0,
+      min: [0, 'Refunded amount cannot be negative'],
+      set: roundCurrency,
     },
     isCancelled: {
       type: Boolean,
@@ -59,13 +68,15 @@ const bookingSchema = new Schema(
     cancellationNote: {
       type: String,
       trim: true,
+      maxlength: [500, 'Cancellation note cannot exceed 500 characters'],
       default: null,
     },
   },
   { timestamps: true }
 );
 
-bookingSchema.index({ vehicleId: 1, isCancelled: 1, startDateTime: 1, endDateTime: 1 });
-bookingSchema.index({ vehicleId: 1, startDateTime: 1, endDateTime: 1 });
+bookingSchema.index({ vehicleId: 1, isCancelled: 1, endDateTime: 1, startDateTime: 1 });
+bookingSchema.index({ startDateTime: -1, isCancelled: 1 });
+bookingSchema.index({ vehicleId: 1, isCancelled: 1, startDateTime: 1 });
 
 module.exports = mongoose.model('Booking', bookingSchema);

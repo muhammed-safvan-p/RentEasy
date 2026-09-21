@@ -32,7 +32,7 @@ const vehicleLockSchema = new Schema(
   { timestamps: true }
 );
 
-// Compound index for fast overlap range queries
-vehicleLockSchema.index({ vehicleId: 1, startDate: 1, endDate: 1 });
+// Compound index for fast overlap range queries (bounds B-tree at requested start date)
+vehicleLockSchema.index({ vehicleId: 1, endDate: 1, startDate: 1 });
 
 module.exports = mongoose.model('VehicleLock', vehicleLockSchema);

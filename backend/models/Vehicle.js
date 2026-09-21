@@ -5,8 +5,9 @@ const operationalNoteSchema = new Schema(
   {
     text: {
       type: String,
-      required: true,
+      required: [true, 'Note text is required'],
       trim: true,
+      maxlength: [1000, 'Operational note cannot exceed 1000 characters'],
     },
     createdBy: {
       type: Schema.Types.ObjectId,
@@ -25,15 +26,19 @@ const vehicleSchema = new Schema(
   {
     name: {
       type: String,
-      required: true,
+      required: [true, 'Vehicle name is required'],
       trim: true,
+      minlength: [2, 'Vehicle name must be at least 2 characters'],
+      maxlength: [100, 'Vehicle name cannot exceed 100 characters'],
     },
     plateNumber: {
       type: String,
-      required: true,
+      required: [true, 'Plate number is required'],
       unique: true,
       trim: true,
       uppercase: true,
+      minlength: [2, 'Plate number must be at least 2 characters'],
+      maxlength: [20, 'Plate number cannot exceed 20 characters'],
     },
     ownerIds: [
       {
@@ -49,6 +54,7 @@ const vehicleSchema = new Schema(
     notes: {
       type: String,
       trim: true,
+      maxlength: [2000, 'Notes cannot exceed 2000 characters'],
     },
     operationalNotes: [operationalNoteSchema],
     fuelType: {
@@ -64,6 +70,8 @@ const vehicleSchema = new Schema(
     seatingCapacity: {
       type: Number,
       default: 5,
+      min: [1, 'Seating capacity must be at least 1'],
+      max: [100, 'Seating capacity cannot exceed 100'],
     },
     isActive: {
       type: Boolean,
@@ -78,5 +86,6 @@ const vehicleSchema = new Schema(
 );
 
 vehicleSchema.index({ ownerIds: 1 });
+vehicleSchema.index({ createdAt: -1 });
 
 module.exports = mongoose.model('Vehicle', vehicleSchema);
