@@ -36,6 +36,13 @@ class LockRepository {
   async deleteById(id) {
     return await VehicleLock.findByIdAndDelete(id);
   }
+
+  /**
+   * Delete all locks for a specific vehicle.
+   */
+  async deleteManyByVehicleId(vehicleId, session = null) {
+    return await VehicleLock.deleteMany({ vehicleId }, { session: session || undefined });
+  }
 }
 
 module.exports = new LockRepository();

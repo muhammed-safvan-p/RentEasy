@@ -19,7 +19,7 @@ class VehicleRepository {
     return await Vehicle.findOne({ plateNumber: plateNumber.trim().toUpperCase() });
   }
 
-  async findAll(filter = {}, populate = null, sort = { createdAt: -1 }) {
+  async findAll(filter = {}, populate = null, sort = { createdAt: -1 }, limit = null, skip = null) {
     let query = Vehicle.find(filter);
     if (populate) {
       if (Array.isArray(populate)) {
@@ -32,6 +32,12 @@ class VehicleRepository {
     }
     if (sort) {
       query = query.sort(sort);
+    }
+    if (skip) {
+      query = query.skip(skip);
+    }
+    if (limit) {
+      query = query.limit(limit);
     }
     return await query;
   }
@@ -80,6 +86,34 @@ class VehicleRepository {
       { $inc: { bookingVersion: 1 } },
       { returnDocument: 'after', session: session || undefined }
     );
+  }
+
+  /**
+   * Count vehicles owned by a specific user.
+   */
+  async countByOwnerId(ownerId) {
+    return await Vehicle.countDocuments({ ownerIds: ownerId });
+  }
+
+  /**
+   * Pull an owner ID from all vehicles they are assigned to.
+   */
+  async removeOwnerFromAllVehicles(ownerId, session = null) {
+    return await Vehicle.updateMany(
+      { ownerIds: ownerId },
+      { $pull: { ownerIds: ownerId } },
+      { session: session || undefined }
+    );
+  }
+
+  /**
+   * Aggregate counts of vehicles grouped by ownerId.
+   */
+  async aggregateOwnerCounts() {
+    return await Vehicle.aggregate([
+      { $unwind: '$ownerIds' },
+      { $group: { _id: '$ownerIds', count: { $sum: 1 } } },
+    ]);
   }
 }
 

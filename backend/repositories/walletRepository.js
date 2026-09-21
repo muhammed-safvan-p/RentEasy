@@ -72,7 +72,7 @@ class WalletRepository {
     return await transaction.save({ session: session || undefined });
   }
 
-  async findTransactions(filter = {}, populate = null, sort = { transactionDate: -1, createdAt: -1 }) {
+  async findTransactions(filter = {}, populate = null, sort = { transactionDate: -1, createdAt: -1 }, limit = null, skip = null) {
     let query = WalletTransaction.find(filter);
     if (populate) {
       if (Array.isArray(populate)) {
@@ -85,6 +85,12 @@ class WalletRepository {
     }
     if (sort) {
       query = query.sort(sort);
+    }
+    if (skip) {
+      query = query.skip(skip);
+    }
+    if (limit) {
+      query = query.limit(limit);
     }
     return await query;
   }
@@ -111,6 +117,20 @@ class WalletRepository {
       { $group: { _id: null, totalRevenue: { $sum: '$amount' } } },
     ]);
     return result[0]?.totalRevenue || 0;
+  }
+
+  /**
+   * Delete the wallet document for a vehicle.
+   */
+  async deleteByVehicleId(vehicleId, session = null) {
+    return await Wallet.deleteOne({ vehicleId }, { session: session || undefined });
+  }
+
+  /**
+   * Delete all transactions for a vehicle.
+   */
+  async deleteTransactionsByVehicleId(vehicleId, session = null) {
+    return await WalletTransaction.deleteMany({ vehicleId }, { session: session || undefined });
   }
 }
 

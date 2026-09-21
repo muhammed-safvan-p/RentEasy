@@ -70,6 +70,33 @@ class BookingRepository {
     return await queryExec;
   }
 
+  async findOverlappingAll({ vehicleId, startDateTime, endDateTime, session = null }) {
+    const start = new Date(startDateTime);
+    const end = new Date(endDateTime);
+
+    const query = {
+      vehicleId,
+      isCancelled: false,
+      startDateTime: { $lt: end },
+      endDateTime: { $gt: start },
+    };
+
+    let queryExec = Booking.find(query);
+    if (session) {
+      queryExec = queryExec.session(session);
+    }
+
+    return await queryExec;
+  }
+
+  async countActiveByVehicle(vehicleId, date = new Date()) {
+    return await Booking.countDocuments({
+      vehicleId,
+      isCancelled: false,
+      endDateTime: { $gte: date },
+    });
+  }
+
   async findActiveAt(vehicleId, date = new Date()) {
     return await Booking.findOne({
       vehicleId,
@@ -205,6 +232,14 @@ class BookingRepository {
 
   async deleteById(id, session = null) {
     return await Booking.findByIdAndDelete(id, { session: session || undefined });
+  }
+
+  async deleteManyByVehicleId(vehicleId, session = null) {
+    return await Booking.deleteMany({ vehicleId }, { session: session || undefined });
+  }
+
+  async deletePaymentsByVehicleId(vehicleId, session = null) {
+    return await BookingPayment.deleteMany({ vehicleId }, { session: session || undefined });
   }
 }
 

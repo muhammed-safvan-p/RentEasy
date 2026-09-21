@@ -22,12 +22,10 @@ class DealerRepository {
    * Find a dealer by exact name (case-insensitive) for a vehicle.
    */
   async findByNameAndVehicle(name, vehicleId) {
-    // Escape regex characters
-    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     return await Dealer.findOne({
       vehicleId,
-      name: { $regex: new RegExp(`^${escaped}$`, 'i') },
-    });
+      name: name.trim(),
+    }).collation({ locale: 'en', strength: 2 });
   }
 
   /**
@@ -49,6 +47,13 @@ class DealerRepository {
    */
   async deleteById(id) {
     return await Dealer.findByIdAndDelete(id);
+  }
+
+  /**
+   * Delete all dealers for a specific vehicle.
+   */
+  async deleteManyByVehicleId(vehicleId, session = null) {
+    return await Dealer.deleteMany({ vehicleId }, { session: session || undefined });
   }
 }
 
