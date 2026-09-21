@@ -32,7 +32,7 @@ export default function OfflinePage() {
 
       {/* Headings */}
       <h1 className="text-2xl font-bold tracking-tight text-white mb-2">
-        You're Currently Offline
+        You&apos;re Currently Offline
       </h1>
       <p className="text-sm text-slate-400 max-w-xs leading-relaxed mb-8">
         RentEasy verifies real-time vehicle availability against live database records. Please check your internet connection to continue.

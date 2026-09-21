@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { ShieldAlert, PhoneCall, Lock, AlertCircle, Eye, EyeOff } from "lucide-react";
-import { API_BASE_URL as baseUrl } from "@/lib/api";
+import { ShieldAlert, PhoneCall, AlertCircle, Eye, EyeOff } from "lucide-react";
+import { api } from "@/lib/api";
 
 function LoginForm() {
   const router = useRouter();
@@ -18,12 +18,6 @@ function LoginForm() {
   const [isBlockedError, setIsBlockedError] = useState(wasBlockedParam);
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    if (wasBlockedParam) {
-      setIsBlockedError(true);
-    }
-  }, [wasBlockedParam]);
-
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
@@ -31,20 +25,15 @@ function LoginForm() {
     setLoading(true);
 
     try {
-      const res = await fetch(`${baseUrl}/api/auth/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password }),
-        credentials: "include", // Important for receiving httpOnly cookies
+      const data = await api.post<{ role?: string; token?: string; message?: string }>("/api/auth/login", {
+        username,
+        password,
       });
 
-      const data = await res.json();
-
-      if (!res.ok) {
-        if (res.status === 403 || data.message?.toLowerCase().includes("blocked")) {
-          setIsBlockedError(true);
-        }
-        throw new Error(data.message || "Failed to login");
+      // Dual-layer session cookie sync for first-party edge middleware compatibility
+      if (data.token) {
+        const isSecure = window.location.protocol === "https:";
+        document.cookie = `token=${data.token}; path=/; max-age=${30 * 24 * 60 * 60}; SameSite=Lax${isSecure ? "; Secure" : ""}`;
       }
 
       if (data.role === "admin") {
@@ -52,8 +41,16 @@ function LoginForm() {
       } else {
         router.push("/dashboard");
       }
-      router.refresh(); // Refresh to update middleware state
+      router.refresh();
     } catch (err: unknown) {
+      if (
+        err &&
+        typeof err === "object" &&
+        "status" in err &&
+        (err as { status?: number }).status === 403
+      ) {
+        setIsBlockedError(true);
+      }
       const message = err instanceof Error ? err.message : "An error occurred during login";
       setError(message);
     } finally {

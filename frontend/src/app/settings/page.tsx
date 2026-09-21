@@ -4,7 +4,8 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, CheckCircle2, Copy, LogOut, Loader2 } from "lucide-react";
-import { API_BASE_URL as baseUrl } from "@/lib/api";
+import { api } from "@/lib/api";
+import { logger } from "@/lib/logger";
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -23,15 +24,11 @@ export default function SettingsPage() {
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        const res = await fetch(`${baseUrl}/api/user/me`, { credentials: "include" });
-        if (!res.ok) {
-          if (res.status === 401) {
-            router.replace("/login");
-            return;
-          }
-        }
-      } catch (err) {
-        console.error("Auth check failed", err);
+        await api.get("/api/user/me");
+      } catch (err: unknown) {
+        logger.error("Auth check failed", err);
+        router.replace("/login");
+        return;
       } finally {
         setLoading(false);
       }
@@ -49,22 +46,21 @@ export default function SettingsPage() {
         setCopiedPhone(true);
         setTimeout(() => setCopiedPhone(false), 2000);
       }
-    } catch (err) {
-      console.error("Failed to copy", err);
+    } catch (err: unknown) {
+      logger.error("Failed to copy", err);
     }
   };
 
   const handleLogout = async () => {
     setIsLoggingOut(true);
     try {
-      await fetch(`${baseUrl}/api/auth/logout`, {
-        method: "POST",
-        credentials: "include"
-      });
-      // Use replace instead of push so they can't hit 'back' to return here
+      await api.post("/api/auth/logout");
+      // Clear client session cookie
+      document.cookie = "token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
       router.replace("/login");
-    } catch (error) {
-      console.error("Logout failed", error);
+      router.refresh();
+    } catch (error: unknown) {
+      logger.error("Logout failed", error);
       setIsLoggingOut(false);
       setShowLogoutConfirm(false);
     }

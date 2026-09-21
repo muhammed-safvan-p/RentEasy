@@ -32,7 +32,11 @@ export default function IOSInstallBanner() {
       }
     }
 
-    setShowBanner(true);
+    const timer = setTimeout(() => {
+      setShowBanner(true);
+    }, 1000);
+
+    return () => clearTimeout(timer);
   }, []);
 
   const handleDismiss = () => {
@@ -78,7 +82,7 @@ export default function IOSInstallBanner() {
               1
             </span>
             <span className="flex items-center gap-1.5">
-              Tap the <Share className="w-3.5 h-3.5 text-indigo-400 inline shrink-0" /> Share button in Safari's toolbar
+              Tap the <Share className="w-3.5 h-3.5 text-indigo-400 inline shrink-0" /> Share button in Safari&apos;s toolbar
             </span>
           </div>
 

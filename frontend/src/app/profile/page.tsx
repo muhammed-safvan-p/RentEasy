@@ -3,8 +3,8 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, User as UserIcon, Shield, Calendar, AlertCircle, Eye, EyeOff, Loader2, CheckCircle2 } from "lucide-react";
-import { API_BASE_URL as baseUrl } from "@/lib/api";
+import { ArrowLeft, Shield, Calendar, AlertCircle, Eye, EyeOff, Loader2, CheckCircle2 } from "lucide-react";
+import { api } from "@/lib/api";
 
 interface UserProfile {
   _id: string;
@@ -35,18 +35,19 @@ export default function ProfilePage() {
   useEffect(() => {
     const fetchUser = async () => {
       try {
-        const res = await fetch(`${baseUrl}/api/user/me`, { credentials: "include" });
-        if (!res.ok) {
-          if (res.status === 401) {
-            router.push("/login");
-            return;
-          }
-          throw new Error("Failed to load profile");
-        }
-        const data = await res.json();
+        const data = await api.get<UserProfile>("/api/user/me");
         setUser(data);
-      } catch (err: any) {
-        setError(err.message);
+      } catch (err: unknown) {
+        if (
+          err &&
+          typeof err === "object" &&
+          "status" in err &&
+          (err as { status?: number }).status === 401
+        ) {
+          router.push("/login");
+          return;
+        }
+        setError(err instanceof Error ? err.message : "Failed to load profile");
       } finally {
         setLoading(false);
       }
@@ -75,22 +76,17 @@ export default function ProfilePage() {
 
     setPasswordUpdating(true);
     try {
-      const res = await fetch(`${baseUrl}/api/user/password`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ currentPassword, newPassword, confirmPassword })
-      });
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Failed to update password");
+      await api.put("/api/user/password", { currentPassword, newPassword, confirmPassword });
 
       setPasswordMessage({ type: 'success', text: 'Password updated successfully!' });
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
-    } catch (err: any) {
-      setPasswordMessage({ type: 'error', text: err.message });
+    } catch (err: unknown) {
+      setPasswordMessage({
+        type: "error",
+        text: err instanceof Error ? err.message : "Failed to update password",
+      });
     } finally {
       setPasswordUpdating(false);
     }

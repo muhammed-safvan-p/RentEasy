@@ -22,6 +22,8 @@ import { useRouter } from "next/navigation";
 
 import { useCurrentUser, useUserVehicles, GarageVehicle } from "@/hooks/useVehicleData";
 import { formatCurrency } from "@/lib/formatters";
+import { ApiError } from "@/lib/api";
+import { logger } from "@/lib/logger";
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -41,7 +43,7 @@ export default function DashboardPage() {
 
   // Auth redirect if 401
   useEffect(() => {
-    if (userError && (userError as any).status === 401) {
+    if (userError && (userError as ApiError).status === 401) {
       router.push("/login");
     }
   }, [userError, router]);
@@ -79,7 +81,7 @@ export default function DashboardPage() {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
-      console.error("Failed to copy", err);
+      logger.error("Failed to copy", err);
     }
   };
 

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { API_BASE_URL as baseUrl } from "@/lib/api";
+import { api } from "@/lib/api";
 
 function validateUsername(value: string): string {
   if (!value) return "";
@@ -57,22 +57,21 @@ export default function SignupPage() {
     setLoading(true);
 
     try {
-      const res = await fetch(`${baseUrl}/api/auth/signup`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password }),
-        credentials: "include",
+      const data = await api.post<{ role?: string; token?: string; message?: string }>("/api/auth/signup", {
+        username,
+        password,
       });
 
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.message || "Failed to sign up");
+      // Dual-layer session cookie sync for first-party edge middleware compatibility
+      if (data.token) {
+        const isSecure = window.location.protocol === "https:";
+        document.cookie = `token=${data.token}; path=/; max-age=${30 * 24 * 60 * 60}; SameSite=Lax${isSecure ? "; Secure" : ""}`;
       }
 
       router.push("/dashboard");
       router.refresh();
-    } catch (err: any) {
-      setServerError(err.message);
+    } catch (err: unknown) {
+      setServerError(err instanceof Error ? err.message : "Failed to sign up");
     } finally {
       setLoading(false);
     }
