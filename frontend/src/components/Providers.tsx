@@ -13,6 +13,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
         revalidateOnReconnect: true,
         dedupingInterval: 2000,
         shouldRetryOnError: false,
+        refreshInterval: 30000,
       }}
     >
       {children}

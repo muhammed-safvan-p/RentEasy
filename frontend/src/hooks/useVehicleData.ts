@@ -93,11 +93,11 @@ export function useVehicleStatus(vehicleId?: string | null) {
  * Hook to fetch vehicle wallet balances
  */
 export function useVehicleWallet(vehicleId?: string | null) {
-  const { data, error, isLoading, mutate: revalidate } = useSWR<any>(
+  const { data, error, isLoading, mutate: revalidate } = useSWR<{ wallet?: WalletData } | WalletData>(
     vehicleId ? `/api/vehicles/${vehicleId}/wallet` : null,
     fetcher
   );
-  const wallet: WalletData | null = data ? (data.wallet || data) : null;
+  const wallet: WalletData | null = data ? ("wallet" in data && data.wallet ? data.wallet : (data as WalletData)) : null;
   return {
     wallet,
     isLoading,
@@ -126,7 +126,7 @@ export async function invalidateVehicleData(vehicleId?: string | null) {
 
   // 3. Invalidate matching pattern keys (month-specific bookings and transactions)
   mutate(
-    (key: any) =>
+    (key: unknown) =>
       typeof key === "string" &&
       (key.includes(`/api/vehicles/${vehicleId}`) || key.includes(`vehicleId=${vehicleId}`)),
     undefined,
