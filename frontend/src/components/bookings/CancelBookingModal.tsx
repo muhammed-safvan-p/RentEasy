@@ -3,6 +3,7 @@
 import React from "react";
 import { AlertTriangle } from "lucide-react";
 import { Booking } from "@/types/booking";
+import { useModalA11y } from "@/hooks/useModalA11y";
 
 interface CancelBookingModalProps {
   cancellingBooking: Booking | null;
@@ -35,18 +36,34 @@ export const CancelBookingModal: React.FC<CancelBookingModalProps> = ({
   onCancellationNoteChange,
   onSubmit,
 }) => {
+  const modalRef = useModalA11y({
+    isOpen: !!cancellingBooking,
+    onClose,
+  });
+
   if (!cancellingBooking) return null;
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="w-full max-w-sm bg-[#18182c] border border-rose-500/30 rounded-3xl p-5 shadow-2xl space-y-4">
+    <div
+      className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="cancel-booking-modal-title"
+        className="w-full max-w-sm bg-[#18182c] border border-rose-500/30 rounded-3xl p-5 shadow-2xl space-y-4"
+      >
         {/* Warning Icon & Title */}
         <div className="flex items-center gap-3">
           <div className="w-11 h-11 rounded-2xl bg-rose-500/15 border border-rose-500/25 flex items-center justify-center text-rose-400 shrink-0 shadow-lg shadow-rose-500/10">
             <AlertTriangle className="w-6 h-6" />
           </div>
           <div>
-            <h3 className="text-base font-bold text-white">Cancel Booking?</h3>
+            <h3 id="cancel-booking-modal-title" className="text-base font-bold text-white">Cancel Booking?</h3>
             <p className="text-xs text-slate-400">This will release the calendar slot.</p>
           </div>
         </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { useModalA11y } from "@/hooks/useModalA11y";
 import {
   X,
   Pencil,
@@ -25,13 +26,13 @@ interface BookingDetailModalProps {
   paymentError: string;
   paymentSuccessMsg: string;
   formatCurrency: (amount: number) => string;
-  formatDateTimeNice: (dateStr: string) => string;
-  getBookingDurationLabel: (startStr: string, endStr: string) => string;
+  formatDateTimeNice: (dateStr: string | Date) => string;
+  getBookingDurationLabel: (start: string | Date, end: string | Date) => string;
   onClose: () => void;
   onOpenEdit: (booking: Booking) => void;
   onPartAmountChange: (value: string) => void;
-  onPartMethodChange: (method: "cash" | "bank") => void;
-  onPartNoteChange: (note: string) => void;
+  onPartMethodChange: (value: "cash" | "bank") => void;
+  onPartNoteChange: (value: string) => void;
   onRecordPartPayment: (e: React.FormEvent) => void;
 }
 
@@ -55,16 +56,32 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({
   onPartNoteChange,
   onRecordPartPayment,
 }) => {
+  const modalRef = useModalA11y({
+    isOpen: !!selectedBooking,
+    onClose,
+  });
+
   if (!selectedBooking) return null;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="w-full sm:max-w-md bg-[#161628] border border-white/10 rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
+    <div
+      className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="booking-detail-modal-title"
+        className="w-full sm:max-w-md bg-[#161628] border border-white/10 rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col"
+      >
         {/* Modal Header */}
         <div className="p-4 border-b border-white/10 flex items-center justify-between bg-[#1a1a2e]">
           <div>
             <div className="flex items-center gap-2">
-              <h3 className="text-base font-bold text-white">Booking Details</h3>
+              <h3 id="booking-detail-modal-title" className="text-base font-bold text-white">Booking Details</h3>
               <span className="font-mono text-[10px] text-slate-400 bg-white/5 px-1.5 py-0.5 rounded">
                 #{selectedBooking._id.slice(-6).toUpperCase()}
               </span>

@@ -2,6 +2,7 @@
 
 import React from "react";
 import { X, AlertCircle, TrendingUp, TrendingDown, Banknote, Building2, Loader2 } from "lucide-react";
+import { useModalA11y } from "@/hooks/useModalA11y";
 
 interface AddTransactionModalProps {
   isOpen: boolean;
@@ -40,14 +41,30 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   onDateChange,
   onSubmit,
 }) => {
+  const modalRef = useModalA11y({
+    isOpen,
+    onClose,
+  });
+
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-[#16162a] border border-white/10 rounded-3xl w-full max-w-md p-6 shadow-2xl relative overflow-hidden">
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="add-tx-modal-title"
+        className="bg-[#16162a] border border-white/10 rounded-3xl w-full max-w-md p-6 shadow-2xl relative overflow-hidden"
+      >
         {/* Modal Header */}
         <div className="flex items-center justify-between pb-3 border-b border-white/10 mb-4">
-          <h3 className="text-base font-bold text-white">Record Transaction</h3>
+          <h3 id="add-tx-modal-title" className="text-base font-bold text-white">Record Transaction</h3>
           <button
             onClick={onClose}
             className="w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white flex items-center justify-center transition-colors"

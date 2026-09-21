@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { useModalA11y } from "@/hooks/useModalA11y";
 import { X, Pencil, AlertCircle, Calendar, Clock } from "lucide-react";
 import { Booking } from "@/types/booking";
 import { DealerComboboxInput } from "@/components/dealers/DealerComboboxInput";
@@ -42,6 +43,11 @@ export const EditBookingModal: React.FC<EditBookingModalProps> = ({
   onTotalAmountChange,
   onSubmit,
 }) => {
+  const modalRef = useModalA11y({
+    isOpen: !!editingBooking,
+    onClose,
+  });
+
   if (!editingBooking) return null;
 
   const effectiveVehicleId =
@@ -52,12 +58,18 @@ export const EditBookingModal: React.FC<EditBookingModalProps> = ({
 
   return (
     <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="edit-booking-title"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
       className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200"
     >
-      <div className="w-full max-w-md bg-[#161628] border border-indigo-500/30 rounded-3xl p-5 shadow-2xl space-y-4 max-h-[92vh] overflow-y-auto no-scrollbar">
+      <div
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="edit-booking-title"
+        className="w-full max-w-md bg-[#161628] border border-indigo-500/30 rounded-3xl p-5 shadow-2xl space-y-4 max-h-[92vh] overflow-y-auto no-scrollbar"
+      >
         {/* Modal Header */}
         <div className="flex items-center justify-between pb-3 border-b border-white/10">
           <div className="flex items-center gap-2.5">

@@ -3,6 +3,7 @@
 import React from "react";
 import { Receipt, X, Loader2, Trash2 } from "lucide-react";
 import { WalletTransaction } from "@/types/wallet";
+import { useModalA11y } from "@/hooks/useModalA11y";
 
 interface TransactionDetailModalProps {
   selectedTx: WalletTransaction | null;
@@ -21,11 +22,22 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
   onClose,
   onDelete,
 }) => {
+  const modalRef = useModalA11y({
+    isOpen: !!selectedTx,
+    onClose,
+  });
+
   if (!selectedTx) return null;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200">
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
       <div
+        ref={modalRef}
         className="bg-[#16162a] border border-white/10 rounded-3xl w-full max-w-md p-6 shadow-2xl relative overflow-hidden"
         role="dialog"
         aria-modal="true"
