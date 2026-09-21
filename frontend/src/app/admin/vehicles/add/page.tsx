@@ -3,7 +3,9 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Save } from "lucide-react";
-import { API_BASE_URL as baseUrl } from "@/lib/api";
+import { api } from "@/lib/api";
+import { logger } from "@/lib/logger";
+import { ErrorBanner } from "@/components/common/ErrorBanner";
 
 interface User {
   _id: string;
@@ -33,19 +35,14 @@ export default function AddVehiclePage() {
   useEffect(() => {
     const fetchUsers = async () => {
       try {
-        const res = await fetch(`${baseUrl}/api/admin/users/list`, {
-          credentials: "include",
-        });
-        if (res.ok) {
-          const data = await res.json();
-          setUsers(data);
-        }
+        const data = await api.get<User[]>("/api/admin/users/list");
+        setUsers(Array.isArray(data) ? data : []);
       } catch (err) {
-        console.error("Failed to load users", err);
+        logger.error("Failed to load users", err);
       }
     };
     fetchUsers();
-  }, [baseUrl]);
+  }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -61,28 +58,20 @@ export default function AddVehiclePage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!formData.name.trim() || !formData.plateNumber.trim()) {
+      setError("Please fill in all required fields.");
+      return;
+    }
+
     setLoading(true);
     setError("");
 
     try {
-      const res = await fetch(`${baseUrl}/api/admin/vehicles`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(formData),
-        credentials: "include",
-      });
-
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.message || "Failed to add vehicle");
-      }
-
+      await api.post("/api/admin/vehicles", formData);
       router.push("/admin/vehicles");
       router.refresh();
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to add vehicle");
       setLoading(false);
     }
   };
@@ -109,9 +98,11 @@ export default function AddVehiclePage() {
 
         <div className="p-8">
           {error && (
-            <div className="mb-6 p-4 bg-rose-50 border border-rose-200 text-rose-600 rounded-xl text-sm">
-              {error}
-            </div>
+            <ErrorBanner
+              message={error}
+              onDismiss={() => setError("")}
+              className="mb-6"
+            />
           )}
 
           <form onSubmit={handleSubmit} className="space-y-6">

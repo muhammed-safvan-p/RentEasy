@@ -29,8 +29,10 @@ import {
   Layers,
   Filter,
 } from "lucide-react";
-import { API_BASE_URL as baseUrl } from "@/lib/api";
+import { api } from "@/lib/api";
 import { formatDateNice } from "@/lib/formatters";
+import { logger } from "@/lib/logger";
+import { ErrorBanner } from "@/components/common/ErrorBanner";
 
 interface Owner {
   _id: string;
@@ -96,21 +98,11 @@ export default function AdminVehiclesPage() {
   const [deleteError, setDeleteError] = useState("");
 
   // Fetch Vehicles
-  const fetchVehicles = useCallback(async (isRefresh = false) => {
-    if (isRefresh) setRefreshing(true);
-    else setLoading(true);
-    setError("");
-
+  const fetchVehicles = useCallback(async () => {
     try {
-      const res = await fetch(`${baseUrl}/api/admin/vehicles`, {
-        credentials: "include",
-      });
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.message || "Failed to fetch vehicles");
-      }
-      const data = await res.json();
+      const data = await api.get<VehicleData[]>("/api/admin/vehicles");
       setVehicles(Array.isArray(data) ? data : []);
+      setError("");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Error loading vehicles");
     } finally {
@@ -122,21 +114,19 @@ export default function AdminVehiclesPage() {
   // Fetch Users List for assignment
   const fetchUsersList = useCallback(async () => {
     try {
-      const res = await fetch(`${baseUrl}/api/admin/users/list`, {
-        credentials: "include",
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setUsersList(Array.isArray(data) ? data : []);
-      }
-    } catch (err) {
-      console.error("Failed to load users list", err);
+      const data = await api.get<UserListItem[]>("/api/admin/users/list");
+      setUsersList(Array.isArray(data) ? data : []);
+    } catch (err: unknown) {
+      logger.error("Failed to load users list", err);
     }
   }, []);
 
   useEffect(() => {
-    fetchVehicles();
-    fetchUsersList();
+    const timer = setTimeout(() => {
+      fetchVehicles();
+      fetchUsersList();
+    }, 0);
+    return () => clearTimeout(timer);
   }, [fetchVehicles, fetchUsersList]);
 
   // Copy helper
@@ -151,20 +141,12 @@ export default function AdminVehiclesPage() {
     setTogglingId(vehicle._id);
     setError("");
     try {
-      const res = await fetch(`${baseUrl}/api/admin/vehicles/${vehicle._id}/toggle`, {
-        method: "PATCH",
-        credentials: "include",
-      });
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.message || "Failed to toggle status");
-      }
-      const data = await res.json();
+      const data = await api.patch<{ isActive: boolean }>(`/api/admin/vehicles/${vehicle._id}/toggle`);
       setVehicles((prev) =>
         prev.map((v) => (v._id === vehicle._id ? { ...v, isActive: data.isActive } : v))
       );
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : "Failed to toggle status");
+      setError(err instanceof Error ? err.message : "Failed to toggle status");
     } finally {
       setTogglingId(null);
     }
@@ -207,20 +189,9 @@ export default function AdminVehiclesPage() {
         ownerIds: editSelectedOwnerIds,
       };
 
-      const res = await fetch(`${baseUrl}/api/admin/vehicles/${editingVehicle._id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify(payload),
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.message || "Failed to update vehicle");
-      }
-
+      await api.put(`/api/admin/vehicles/${editingVehicle._id}`, payload);
       setEditingVehicle(null);
-      await fetchVehicles(true);
+      await fetchVehicles();
     } catch (err: unknown) {
       setEditError(err instanceof Error ? err.message : "Update failed");
     } finally {
@@ -235,16 +206,7 @@ export default function AdminVehiclesPage() {
     setDeleteError("");
 
     try {
-      const res = await fetch(`${baseUrl}/api/admin/vehicles/${deletingVehicle._id}`, {
-        method: "DELETE",
-        credentials: "include",
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.message || "Failed to delete vehicle");
-      }
-
+      await api.delete(`/api/admin/vehicles/${deletingVehicle._id}`);
       setDeletingVehicle(null);
       setVehicles((prev) => prev.filter((v) => v._id !== deletingVehicle._id));
     } catch (err: unknown) {
@@ -299,15 +261,14 @@ export default function AdminVehiclesPage() {
 
   // Pagination Slice
   const totalPages = Math.ceil(filteredVehicles.length / pageSize) || 1;
+  const safePage = Math.min(Math.max(1, currentPage), totalPages);
+  if (currentPage > totalPages) {
+    setCurrentPage(totalPages);
+  }
   const paginatedVehicles = useMemo(() => {
-    const start = (currentPage - 1) * pageSize;
+    const start = (safePage - 1) * pageSize;
     return filteredVehicles.slice(start, start + pageSize);
-  }, [filteredVehicles, currentPage, pageSize]);
-
-  // Reset to page 1 if filter results change
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [search, statusFilter, ownershipFilter, fuelFilter, pageSize]);
+  }, [filteredVehicles, safePage, pageSize]);
 
   // Computed Metrics
   const stats = useMemo(() => {
@@ -348,7 +309,11 @@ export default function AdminVehiclesPage() {
 
         <div className="flex items-center gap-2.5">
           <button
-            onClick={() => fetchVehicles(true)}
+            onClick={() => {
+              setRefreshing(true);
+              setError("");
+              fetchVehicles();
+            }}
             disabled={refreshing || loading}
             className="inline-flex items-center gap-2 px-3.5 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 hover:border-slate-300 transition-all shadow-sm active:scale-95 disabled:opacity-50"
             title="Refresh fleet data"
@@ -452,23 +417,19 @@ export default function AdminVehiclesPage() {
         </div>
       </div>
 
-      {/* Global Error Banner */}
+      {/* Standardized Global Error Banner */}
       {error && (
-        <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 flex items-start justify-between gap-3">
-          <div className="flex items-start gap-2.5 text-rose-700 text-sm">
-            <AlertCircle className="w-5 h-5 shrink-0 mt-0.5 text-rose-600" />
-            <div>
-              <p className="font-semibold">Failed to load vehicles</p>
-              <p className="text-rose-600 mt-0.5">{error}</p>
-            </div>
-          </div>
-          <button
-            onClick={() => fetchVehicles()}
-            className="px-3 py-1 text-xs font-semibold bg-rose-100 hover:bg-rose-200 text-rose-800 rounded-lg transition-colors"
-          >
-            Retry
-          </button>
-        </div>
+        <ErrorBanner
+          message={error}
+          onRetry={() => {
+            setLoading(true);
+            setError("");
+            fetchVehicles();
+            fetchUsersList();
+          }}
+          onDismiss={() => setError("")}
+          className="mb-0"
+        />
       )}
 
       {/* Filter and Search Bar Card */}
@@ -635,6 +596,31 @@ export default function AdminVehiclesPage() {
                     </td>
                   </tr>
                 ))
+              ) : error && vehicles.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="py-16 px-4 text-center">
+                    <div className="max-w-sm mx-auto flex flex-col items-center">
+                      <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-500 flex items-center justify-center mb-3">
+                        <AlertCircle className="w-6 h-6" />
+                      </div>
+                      <h3 className="text-base font-bold text-slate-800">Failed to load vehicles</h3>
+                      <p className="text-xs text-slate-500 mt-1 mb-4">{error}</p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setLoading(true);
+                          setError("");
+                          fetchVehicles();
+                          fetchUsersList();
+                        }}
+                        className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-all shadow-sm cursor-pointer"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5" />
+                        Retry Loading
+                      </button>
+                    </div>
+                  </td>
+                </tr>
               ) : filteredVehicles.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="py-16 px-4 text-center">

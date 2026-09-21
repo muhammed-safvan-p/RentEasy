@@ -28,8 +28,9 @@ import {
   ChevronsLeft,
   ChevronsRight,
 } from "lucide-react";
-import { API_BASE_URL as baseUrl } from "@/lib/api";
+import { api } from "@/lib/api";
 import { formatDateNice, formatFullDateTime } from "@/lib/formatters";
+import { ErrorBanner } from "@/components/common/ErrorBanner";
 
 interface UserData {
   _id: string;
@@ -82,21 +83,11 @@ export default function AdminUsersPage() {
   const [deleteError, setDeleteError] = useState("");
 
   // Fetch Users
-  const fetchUsers = useCallback(async (isRefresh = false) => {
-    if (isRefresh) setRefreshing(true);
-    else setLoading(true);
-    setError("");
-
+  const fetchUsers = useCallback(async () => {
     try {
-      const res = await fetch(`${baseUrl}/api/admin/users`, {
-        credentials: "include",
-      });
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.message || "Failed to fetch users");
-      }
-      const data = await res.json();
+      const data = await api.get<UserData[]>("/api/admin/users");
       setUsers(Array.isArray(data) ? data : []);
+      setError("");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Error loading users");
     } finally {
@@ -106,7 +97,10 @@ export default function AdminUsersPage() {
   }, []);
 
   useEffect(() => {
-    fetchUsers();
+    const timer = setTimeout(() => {
+      fetchUsers();
+    }, 0);
+    return () => clearTimeout(timer);
   }, [fetchUsers]);
 
   // Copy helper
@@ -121,20 +115,12 @@ export default function AdminUsersPage() {
     setTogglingId(user._id);
     setError("");
     try {
-      const res = await fetch(`${baseUrl}/api/admin/users/${user._id}/block`, {
-        method: "PATCH",
-        credentials: "include",
-      });
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.message || "Failed to toggle block status");
-      }
-      const data = await res.json();
+      const data = await api.patch<{ isBlock: boolean }>(`/api/admin/users/${user._id}/block`);
       setUsers((prev) =>
         prev.map((u) => (u._id === user._id ? { ...u, isBlock: data.isBlock } : u))
       );
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : "Failed to toggle status");
+      setError(err instanceof Error ? err.message : "Failed to toggle status");
     } finally {
       setTogglingId(null);
     }
@@ -151,32 +137,22 @@ export default function AdminUsersPage() {
     setAddError("");
 
     try {
-      const res = await fetch(`${baseUrl}/api/admin/users`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          username: addUsername.trim(),
-          password: addPassword,
-          role: addRole,
-          isBlock: addIsBlock,
-        }),
+      const data = await api.post<{ user: UserData }>("/api/admin/users", {
+        username: addUsername.trim(),
+        password: addPassword.trim(),
+        role: addRole,
+        isBlock: addIsBlock,
       });
-
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.message || "Failed to create user");
+      if (data.user) {
+        setUsers((prev) => [data.user, ...prev]);
       }
-
-      const newUser = await res.json();
-      setUsers((prev) => [newUser, ...prev]);
       setShowAddModal(false);
       setAddUsername("");
       setAddPassword("");
       setAddRole("user");
       setAddIsBlock(false);
     } catch (err: unknown) {
-      setAddError(err instanceof Error ? err.message : "Failed to create user");
+      setAddError(err instanceof Error ? err.message : "Failed to add user");
     } finally {
       setSubmittingAdd(false);
     }
@@ -219,19 +195,7 @@ export default function AdminUsersPage() {
         payload.password = editPassword.trim();
       }
 
-      const res = await fetch(`${baseUrl}/api/admin/users/${editingUser._id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify(payload),
-      });
-
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.message || "Failed to update user");
-      }
-
-      const updated = await res.json();
+      const updated = await api.put<UserData>(`/api/admin/users/${editingUser._id}`, payload);
       setUsers((prev) => prev.map((u) => (u._id === updated._id ? { ...u, ...updated } : u)));
       setEditingUser(null);
     } catch (err: unknown) {
@@ -248,16 +212,7 @@ export default function AdminUsersPage() {
     setDeleteError("");
 
     try {
-      const res = await fetch(`${baseUrl}/api/admin/users/${deletingUser._id}`, {
-        method: "DELETE",
-        credentials: "include",
-      });
-
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.message || "Failed to delete user");
-      }
-
+      await api.delete(`/api/admin/users/${deletingUser._id}`);
       setUsers((prev) => prev.filter((u) => u._id !== deletingUser._id));
       setDeletingUser(null);
     } catch (err: unknown) {
@@ -322,7 +277,11 @@ export default function AdminUsersPage() {
 
         <div className="flex items-center gap-3">
           <button
-            onClick={() => fetchUsers(true)}
+            onClick={() => {
+              setRefreshing(true);
+              setError("");
+              fetchUsers();
+            }}
             disabled={refreshing}
             className="flex items-center gap-2 px-3.5 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors shadow-sm disabled:opacity-50"
           >
@@ -460,9 +419,17 @@ export default function AdminUsersPage() {
       {/* Users Table Card */}
       <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
         {error && (
-          <div className="px-6 py-4 bg-rose-50 border-b border-rose-100 text-rose-600 text-xs font-semibold flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 shrink-0" />
-            {error}
+          <div className="p-4 bg-slate-50/50 border-b border-slate-200/80">
+            <ErrorBanner
+              message={error}
+              onRetry={() => {
+                setLoading(true);
+                setError("");
+                fetchUsers();
+              }}
+              onDismiss={() => setError("")}
+              className="mb-0"
+            />
           </div>
         )}
 
@@ -498,6 +465,30 @@ export default function AdminUsersPage() {
                     <td className="px-6 py-4 text-right"><div className="h-8 w-16 bg-slate-100 rounded-lg ml-auto" /></td>
                   </tr>
                 ))
+              ) : error && users.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-6 py-16 text-center">
+                    <div className="max-w-sm mx-auto flex flex-col items-center">
+                      <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-500 flex items-center justify-center mb-3">
+                        <AlertCircle className="w-6 h-6" />
+                      </div>
+                      <h3 className="text-base font-bold text-slate-800">Failed to load users</h3>
+                      <p className="text-xs text-slate-500 mt-1 mb-4">{error}</p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setLoading(true);
+                          setError("");
+                          fetchUsers();
+                        }}
+                        className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-all shadow-sm cursor-pointer"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5" />
+                        Retry Loading
+                      </button>
+                    </div>
+                  </td>
+                </tr>
               ) : paginatedUsers.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="px-6 py-16 text-center text-slate-400">

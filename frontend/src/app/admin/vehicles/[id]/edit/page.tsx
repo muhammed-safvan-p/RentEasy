@@ -3,7 +3,8 @@
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, Save } from "lucide-react";
-import { API_BASE_URL as baseUrl } from "@/lib/api";
+import { api } from "@/lib/api";
+import { ErrorBanner } from "@/components/common/ErrorBanner";
 
 interface User {
   _id: string;
@@ -36,21 +37,21 @@ export default function EditVehiclePage() {
     const fetchData = async () => {
       try {
         // Fetch users
-        const usersRes = await fetch(`${baseUrl}/api/admin/users/list`, {
-          credentials: "include",
-        });
-        if (usersRes.ok) {
-          const usersData = await usersRes.json();
-          setUsers(usersData);
-        }
+        const usersData = await api.get<User[]>("/api/admin/users/list").catch(() => [] as User[]);
+        setUsers(usersData);
 
         // Fetch vehicle
-        const vehicleRes = await fetch(`${baseUrl}/api/admin/vehicles/${id}`, {
-          credentials: "include",
-        });
-        if (!vehicleRes.ok) throw new Error("Vehicle not found");
+        const vehicleData = await api.get<{
+          name?: string;
+          plateNumber?: string;
+          notes?: string;
+          imageUrl?: string;
+          fuelType?: string;
+          transmission?: string;
+          seatingCapacity?: number;
+          ownerIds?: ({ _id?: string } | string)[];
+        }>(`/api/admin/vehicles/${id}`);
         
-        const vehicleData = await vehicleRes.json();
         setFormData({
           name: vehicleData.name || "",
           plateNumber: vehicleData.plateNumber || "",
@@ -59,54 +60,59 @@ export default function EditVehiclePage() {
           fuelType: vehicleData.fuelType || "Diesel",
           transmission: vehicleData.transmission || "Manual",
           seatingCapacity: vehicleData.seatingCapacity !== undefined ? String(vehicleData.seatingCapacity) : "5",
-          ownerIds: vehicleData.ownerIds ? vehicleData.ownerIds.map((o: any) => o._id || o) : [],
+          ownerIds: vehicleData.ownerIds
+            ? vehicleData.ownerIds.map((o) => (typeof o === "object" && o?._id ? o._id : String(o)))
+            : [],
         });
-      } catch (err: any) {
-        setError(err.message);
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : "Failed to load vehicle data");
       } finally {
         setLoading(false);
       }
     };
     
     fetchData();
-  }, [id, baseUrl]);
+  }, [id]);
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+  const handleChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
+  ) => {
     const { name, value } = e.target;
-    
-    if (name === "ownerIds") {
-      const select = e.target as HTMLSelectElement;
-      const selectedValues = Array.from(select.selectedOptions, option => option.value);
-      setFormData(prev => ({ ...prev, ownerIds: selectedValues }));
-    } else {
-      setFormData(prev => ({ ...prev, [name]: value }));
-    }
+    setFormData((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+  };
+
+  const handleOwnerChange = (userId: string) => {
+    setFormData((prev) => {
+      const exists = prev.ownerIds.includes(userId);
+      return {
+        ...prev,
+        ownerIds: exists
+          ? prev.ownerIds.filter((id) => id !== userId)
+          : [...prev.ownerIds, userId],
+      };
+    });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!formData.name.trim() || !formData.plateNumber.trim()) {
+      setError("Please fill in all required fields.");
+      return;
+    }
+
     setSaving(true);
     setError("");
 
     try {
-      const res = await fetch(`${baseUrl}/api/admin/vehicles/${id}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(formData),
-        credentials: "include",
-      });
-
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.message || "Failed to update vehicle");
-      }
+      await api.put(`/api/admin/vehicles/${id}`, formData);
 
       router.push(`/admin/vehicles/${id}`);
       router.refresh();
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to update vehicle");
       setSaving(false);
     }
   };
@@ -142,9 +148,11 @@ export default function EditVehiclePage() {
 
         <div className="p-8">
           {error && (
-            <div className="mb-6 p-4 bg-rose-50 border border-rose-200 text-rose-600 rounded-xl text-sm">
-              {error}
-            </div>
+            <ErrorBanner
+              message={error}
+              onDismiss={() => setError("")}
+              className="mb-6"
+            />
           )}
 
           <form onSubmit={handleSubmit} className="space-y-6">

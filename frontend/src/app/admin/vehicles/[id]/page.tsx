@@ -37,25 +37,21 @@ import {
   ChevronsLeft,
   ChevronsRight,
   Search,
-  Filter,
-  Layers,
   X,
   Loader2,
   CheckCircle2,
   XCircle,
   Tag,
   ArrowUpRight,
-  ArrowDownLeft,
   CalendarX2,
 } from "lucide-react";
-import { API_BASE_URL as baseUrl } from "@/lib/api";
+import { api } from "@/lib/api";
 import {
   formatCurrency,
   formatDateNice,
   formatDateTimeNice,
   formatFullDateTime,
   formatMonthDisplay,
-  formatMonthParam,
   getBookingDurationLabel,
   getBookingStatus,
 } from "@/lib/formatters";
@@ -67,6 +63,7 @@ import {
   Booking,
   VehicleLock,
   Dealer,
+  OperationalNote,
 } from "@/types";
 
 type TabKey = "overview" | "bookings" | "financials" | "locks" | "notes" | "dealers";
@@ -78,7 +75,6 @@ export default function AdminVehicleDetailPage() {
   // Core Data States
   const [vehicle, setVehicle] = useState<Vehicle | null>(null);
   const [liveStatus, setLiveStatus] = useState<VehicleStatus | null>(null);
-  const [stats, setStats] = useState<{ totalTrips: number; totalRevenue: number } | null>(null);
   const [wallet, setWallet] = useState<WalletData | null>(null);
   const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -102,7 +98,7 @@ export default function AdminVehicleDetailPage() {
   const [bookingFromDate, setBookingFromDate] = useState("");
   const [bookingToDate, setBookingToDate] = useState("");
   const [bookingPage, setBookingPage] = useState(1);
-  const [bookingPageSize, setBookingPageSize] = useState(10);
+  const [bookingPageSize, setBookingPageSize] = useState(20);
 
   // Wallet Filter & Pagination States
   const [txFilter, setTxFilter] = useState<string>("all");
@@ -110,7 +106,7 @@ export default function AdminVehicleDetailPage() {
   const [txFromDate, setTxFromDate] = useState("");
   const [txToDate, setTxToDate] = useState("");
   const [txPage, setTxPage] = useState(1);
-  const [txPageSize, setTxPageSize] = useState(10);
+  const [txPageSize, setTxPageSize] = useState(20);
 
   // Modal States
   const [showAddNoteModal, setShowAddNoteModal] = useState(false);
@@ -134,65 +130,55 @@ export default function AdminVehicleDetailPage() {
   const [deletingDealerId, setDeletingDealerId] = useState<string | null>(null);
 
   // Fetch all vehicle data concurrently
-  const loadAllData = useCallback(async (isRefresh = false) => {
+  const loadAllData = useCallback(async () => {
     if (!id) return;
-    if (isRefresh) setRefreshing(true);
-    else setLoading(true);
-    setError("");
 
     try {
       const [
         vehicleRes,
         statusRes,
-        statsRes,
         walletRes,
         txRes,
         bookingsRes,
         locksRes,
         dealersRes,
       ] = await Promise.allSettled([
-        fetch(`${baseUrl}/api/admin/vehicles/${id}`, { credentials: "include" }),
-        fetch(`${baseUrl}/api/vehicles/${id}/status`, { credentials: "include" }),
-        fetch(`${baseUrl}/api/vehicles/${id}/stats`, { credentials: "include" }),
-        fetch(`${baseUrl}/api/vehicles/${id}/wallet`, { credentials: "include" }),
-        fetch(`${baseUrl}/api/vehicles/${id}/wallet/transactions?limit=500`, { credentials: "include" }),
-        fetch(`${baseUrl}/api/bookings?vehicleId=${id}&limit=500`, { credentials: "include" }),
-        fetch(`${baseUrl}/api/vehicles/${id}/locks`, { credentials: "include" }),
-        fetch(`${baseUrl}/api/vehicles/${id}/dealers`, { credentials: "include" }),
+        api.get<Vehicle>(`/api/admin/vehicles/${id}`),
+        api.get<VehicleStatus>(`/api/vehicles/${id}/status`),
+        api.get<WalletData | { wallet: WalletData }>(`/api/vehicles/${id}/wallet`),
+        api.get<{ transactions: WalletTransaction[] }>(`/api/vehicles/${id}/wallet/transactions?limit=500`),
+        api.get<{ bookings: Booking[] } | Booking[]>(`/api/bookings?vehicleId=${id}&limit=500`),
+        api.get<{ locks: VehicleLock[] } | VehicleLock[]>(`/api/vehicles/${id}/locks`),
+        api.get<{ dealers: Dealer[] } | Dealer[]>(`/api/vehicles/${id}/dealers`),
       ]);
 
-      if (vehicleRes.status === "fulfilled" && vehicleRes.value.ok) {
-        const vehicleData = await vehicleRes.value.json();
-        setVehicle(vehicleData);
+      if (vehicleRes.status === "fulfilled") {
+        setVehicle(vehicleRes.value);
       } else {
         throw new Error("Failed to load vehicle details or vehicle does not exist.");
       }
 
-      if (statusRes.status === "fulfilled" && statusRes.value.ok) {
-        setLiveStatus(await statusRes.value.json());
+      if (statusRes.status === "fulfilled") {
+        setLiveStatus(statusRes.value);
       }
-      if (statsRes.status === "fulfilled" && statsRes.value.ok) {
-        setStats(await statsRes.value.json());
+      if (walletRes.status === "fulfilled") {
+        const val = walletRes.value as { wallet?: WalletData } | WalletData;
+        setWallet("wallet" in val && val.wallet ? val.wallet : (val as WalletData));
       }
-      if (walletRes.status === "fulfilled" && walletRes.value.ok) {
-        const walletData = await walletRes.value.json();
-        setWallet(walletData.wallet || walletData);
+      if (txRes.status === "fulfilled") {
+        setTransactions(txRes.value.transactions || []);
       }
-      if (txRes.status === "fulfilled" && txRes.value.ok) {
-        const txData = await txRes.value.json();
-        setTransactions(txData.transactions || []);
+      if (bookingsRes.status === "fulfilled") {
+        const val = bookingsRes.value;
+        setBookings(Array.isArray(val) ? val : val.bookings || []);
       }
-      if (bookingsRes.status === "fulfilled" && bookingsRes.value.ok) {
-        const bookingsData = await bookingsRes.value.json();
-        setBookings(Array.isArray(bookingsData) ? bookingsData : bookingsData.bookings || []);
+      if (locksRes.status === "fulfilled") {
+        const val = locksRes.value;
+        setLocks("locks" in val && Array.isArray(val.locks) ? val.locks : (Array.isArray(val) ? val : []));
       }
-      if (locksRes.status === "fulfilled" && locksRes.value.ok) {
-        const locksData = await locksRes.value.json();
-        setLocks(locksData.locks || locksData || []);
-      }
-      if (dealersRes.status === "fulfilled" && dealersRes.value.ok) {
-        const dealersData = await dealersRes.value.json();
-        setDealers(Array.isArray(dealersData) ? dealersData : dealersData.dealers || []);
+      if (dealersRes.status === "fulfilled") {
+        const val = dealersRes.value;
+        setDealers(Array.isArray(val) ? val : ("dealers" in val && Array.isArray(val.dealers) ? val.dealers : []));
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Error loading vehicle data");
@@ -203,7 +189,10 @@ export default function AdminVehicleDetailPage() {
   }, [id]);
 
   useEffect(() => {
-    loadAllData();
+    const timer = setTimeout(() => {
+      loadAllData();
+    }, 0);
+    return () => clearTimeout(timer);
   }, [loadAllData]);
 
   // Copy helper
@@ -249,12 +238,7 @@ export default function AdminVehicleDetailPage() {
     if (!vehicle) return;
     setTogglingActive(true);
     try {
-      const res = await fetch(`${baseUrl}/api/admin/vehicles/${vehicle._id}/toggle`, {
-        method: "PATCH",
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error("Failed to toggle vehicle status");
-      const data = await res.json();
+      const data = await api.patch<{ isActive: boolean }>(`/api/admin/vehicles/${vehicle._id}/toggle`);
       setVehicle((prev) => (prev ? { ...prev, isActive: data.isActive } : null));
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : "Failed to toggle status");
@@ -273,17 +257,9 @@ export default function AdminVehicleDetailPage() {
     setSubmittingNote(true);
     setNoteError("");
     try {
-      const res = await fetch(`${baseUrl}/api/vehicles/${id}/notes`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ text: newNoteText.trim() }),
+      const data = await api.post<{ note: OperationalNote }>(`/api/vehicles/${id}/notes`, {
+        text: newNoteText.trim(),
       });
-      if (!res.ok) {
-        const errJson = await res.json();
-        throw new Error(errJson.message || "Failed to add note");
-      }
-      const data = await res.json();
       if (data.note) {
         setVehicle((prev) =>
           prev
@@ -305,14 +281,7 @@ export default function AdminVehicleDetailPage() {
     if (!confirm("Are you sure you want to delete this operational note?")) return;
     setDeletingNoteId(noteId);
     try {
-      const res = await fetch(`${baseUrl}/api/vehicles/${id}/notes/${noteId}`, {
-        method: "DELETE",
-        credentials: "include",
-      });
-      if (!res.ok) {
-        const errJson = await res.json();
-        throw new Error(errJson.message || "Failed to delete note");
-      }
+      await api.delete(`/api/vehicles/${id}/notes/${noteId}`);
       setVehicle((prev) =>
         prev
           ? {
@@ -338,21 +307,11 @@ export default function AdminVehicleDetailPage() {
     setSubmittingLock(true);
     setLockError("");
     try {
-      const res = await fetch(`${baseUrl}/api/vehicles/${id}/locks`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          startDate: lockStartDate,
-          endDate: lockEndDate,
-          reason: lockReason.trim(),
-        }),
+      const data = await api.post<{ lock: VehicleLock }>(`/api/vehicles/${id}/locks`, {
+        startDate: lockStartDate,
+        endDate: lockEndDate,
+        reason: lockReason.trim(),
       });
-      if (!res.ok) {
-        const errJson = await res.json();
-        throw new Error(errJson.message || "Failed to create lock");
-      }
-      const data = await res.json();
       if (data.lock) {
         setLocks((prev) => [data.lock, ...prev]);
       }
@@ -360,8 +319,12 @@ export default function AdminVehicleDetailPage() {
       setLockEndDate("");
       setLockReason("");
       setShowAddLockModal(false);
-      const statusRes = await fetch(`${baseUrl}/api/vehicles/${id}/status`, { credentials: "include" });
-      if (statusRes.ok) setLiveStatus(await statusRes.json());
+      try {
+        const statusData = await api.get<VehicleStatus>(`/api/vehicles/${id}/status`);
+        setLiveStatus(statusData);
+      } catch {
+        // Non-blocking status refresh
+      }
     } catch (err: unknown) {
       setLockError(err instanceof Error ? err.message : "Failed to create lock");
     } finally {
@@ -374,17 +337,14 @@ export default function AdminVehicleDetailPage() {
     if (!confirm("Are you sure you want to release this lock?")) return;
     setDeletingLockId(lockId);
     try {
-      const res = await fetch(`${baseUrl}/api/vehicles/${id}/locks/${lockId}`, {
-        method: "DELETE",
-        credentials: "include",
-      });
-      if (!res.ok) {
-        const errJson = await res.json();
-        throw new Error(errJson.message || "Failed to remove lock");
-      }
+      await api.delete(`/api/vehicles/${id}/locks/${lockId}`);
       setLocks((prev) => prev.filter((l) => l._id !== lockId));
-      const statusRes = await fetch(`${baseUrl}/api/vehicles/${id}/status`, { credentials: "include" });
-      if (statusRes.ok) setLiveStatus(await statusRes.json());
+      try {
+        const statusData = await api.get<VehicleStatus>(`/api/vehicles/${id}/status`);
+        setLiveStatus(statusData);
+      } catch {
+        // Non-blocking status refresh
+      }
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : "Error removing lock");
     } finally {
@@ -402,19 +362,11 @@ export default function AdminVehicleDetailPage() {
     setSubmittingDealer(true);
     setDealerError("");
     try {
-      const res = await fetch(`${baseUrl}/api/vehicles/${id}/dealers`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ name: newDealerName.trim() }),
+      const data = await api.post<{ dealer: Dealer }>(`/api/vehicles/${id}/dealers`, {
+        name: newDealerName.trim(),
       });
-      if (!res.ok) {
-        const errJson = await res.json();
-        throw new Error(errJson.message || "Failed to add dealer");
-      }
-      const data = await res.json();
-      if (data.dealer || data) {
-        setDealers((prev) => [...prev, data.dealer || data]);
+      if (data.dealer) {
+        setDealers((prev) => [...prev, data.dealer]);
       }
       setNewDealerName("");
       setShowAddDealerModal(false);
@@ -430,14 +382,7 @@ export default function AdminVehicleDetailPage() {
     if (!confirm("Are you sure you want to delete this dealer preset?")) return;
     setDeletingDealerId(dealerId);
     try {
-      const res = await fetch(`${baseUrl}/api/vehicles/${id}/dealers/${dealerId}`, {
-        method: "DELETE",
-        credentials: "include",
-      });
-      if (!res.ok) {
-        const errJson = await res.json();
-        throw new Error(errJson.message || "Failed to delete dealer");
-      }
+      await api.delete(`/api/vehicles/${id}/dealers/${dealerId}`);
       setDealers((prev) => prev.filter((d) => d._id !== dealerId));
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : "Error deleting dealer");
@@ -751,10 +696,6 @@ export default function AdminVehicleDetailPage() {
     );
   }
 
-  const daysSinceRegistered = vehicle.createdAt
-    ? Math.max(0, Math.floor((Date.now() - new Date(vehicle.createdAt).getTime()) / (1000 * 60 * 60 * 24)))
-    : 0;
-
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-16">
       {/* Top Navigation Bar */}
@@ -769,7 +710,11 @@ export default function AdminVehicleDetailPage() {
 
         <div className="flex items-center gap-3">
           <button
-            onClick={() => loadAllData(true)}
+            onClick={() => {
+              setRefreshing(true);
+              setError("");
+              loadAllData();
+            }}
             disabled={refreshing}
             className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 transition-all shadow-sm disabled:opacity-60"
           >
@@ -1326,7 +1271,7 @@ export default function AdminVehicleDetailPage() {
               />
               <SpecItem label="Registered On" value={formatFullDateTime(vehicle.createdAt)} />
               <SpecItem label="Last Modified" value={formatFullDateTime(vehicle.updatedAt)} />
-              <SpecItem label="Concurrency Booking Version" value={`v${(vehicle as any).bookingVersion ?? 0}`} />
+              <SpecItem label="Concurrency Booking Version" value={`v${(vehicle as unknown as { bookingVersion?: number }).bookingVersion ?? 0}`} />
               <SpecItem label="Database ID" value={vehicle._id} mono copyable onCopy={() => handleCopy(vehicle._id, "spec-id")} />
             </div>
 
@@ -1612,8 +1557,9 @@ export default function AdminVehicleDetailPage() {
                     className="px-2 py-1 rounded-lg border border-slate-200 bg-white font-medium text-slate-800"
                   >
                     <option value={10}>10 per page</option>
-                    <option value={25}>25 per page</option>
+                    <option value={20}>20 per page</option>
                     <option value={50}>50 per page</option>
+                    <option value={100}>100 per page</option>
                   </select>
                   <span>
                     Showing {Math.min((bookingPage - 1) * bookingPageSize + 1, filteredBookings.length)} to{" "}
@@ -1901,8 +1847,9 @@ export default function AdminVehicleDetailPage() {
                       className="px-2 py-1 rounded-lg border border-slate-200 bg-white font-medium text-slate-800"
                     >
                       <option value={10}>10 per page</option>
-                      <option value={25}>25 per page</option>
+                      <option value={20}>20 per page</option>
                       <option value={50}>50 per page</option>
+                      <option value={100}>100 per page</option>
                     </select>
                     <span>
                       Showing {Math.min((txPage - 1) * txPageSize + 1, filteredTransactions.length)} to{" "}

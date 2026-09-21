@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Home, Users, Car, LogOut } from "lucide-react";
-import { API_BASE_URL as baseUrl } from "@/lib/api";
+import { api } from "@/lib/api";
+import { logger } from "@/lib/logger";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -17,14 +18,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   const handleLogout = async () => {
     try {
-      await fetch(`${baseUrl}/api/auth/logout`, {
-        method: "POST",
-        credentials: "include",
-      });
+      await api.post("/api/auth/logout");
       router.push("/login");
       router.refresh();
-    } catch (err) {
-      console.error("Failed to logout", err);
+    } catch (err: unknown) {
+      logger.error("Failed to logout", err);
     }
   };
 
