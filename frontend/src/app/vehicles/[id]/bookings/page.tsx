@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Plus, Calendar } from "lucide-react";
-import { invalidateVehicleData } from "@/hooks/useVehicleData";
-import { API_BASE_URL as baseUrl } from "@/lib/api";
+import useSWR from "swr";
+import { useVehicleDetail, invalidateVehicleData } from "@/hooks/useVehicleData";
+import { fetcher, api, ApiError } from "@/lib/api";
 import {
   formatCurrency,
   formatDateTimeNice,
@@ -14,7 +15,7 @@ import {
   getBookingDurationLabel,
   getBookingStatus,
 } from "@/lib/formatters";
-import { Booking, BookingPayment, BookingVehicle, FilterKey } from "@/types/booking";
+import { Booking, BookingPayment, FilterKey } from "@/types/booking";
 import { BookingFilterBar } from "@/components/bookings/BookingFilterBar";
 import { BookingCard } from "@/components/bookings/BookingCard";
 import { BookingDetailModal } from "@/components/bookings/BookingDetailModal";
@@ -27,14 +28,21 @@ export default function VehicleBookingsPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
 
-  // State
-  const [vehicle, setVehicle] = useState<BookingVehicle | null>(null);
-  const [bookings, setBookings] = useState<Booking[]>([]);
-  const [selectedMonth, setSelectedMonth] = useState<Date>(() => new Date());
+  const [selectedMonth, setSelectedMonth] = useState<Date>(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const dateParam = params.get("date");
+      if (dateParam) {
+        const [year, month] = dateParam.split("-").map(Number);
+        if (year && month) {
+          return new Date(year, month - 1, 1);
+        }
+      }
+    }
+    return new Date();
+  });
   const [activeFilter, setActiveFilter] = useState<FilterKey>("all");
 
-  const [loading, setLoading] = useState(true);
-  const [listLoading, setListLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
   // Detail & Payment Modal
@@ -72,6 +80,38 @@ export default function VehicleBookingsPage() {
   const [submittingEdit, setSubmittingEdit] = useState(false);
   const [editError, setEditError] = useState("");
 
+  // Vehicle SWR hook
+  const { vehicle, isLoading: vehicleLoading, error: vehicleError } = useVehicleDetail(id);
+
+  // Monthly Bookings SWR query
+  const year = selectedMonth.getFullYear();
+  const month = selectedMonth.getMonth();
+  const from = useMemo(() => new Date(year, month, 1, 0, 0, 0, 0).toISOString(), [year, month]);
+  const to = useMemo(() => new Date(year, month + 1, 0, 23, 59, 59, 999).toISOString(), [year, month]);
+
+  const bookingsKey = id
+    ? `/api/bookings?vehicleId=${id}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&limit=100`
+    : null;
+
+  const {
+    data: bookingsData,
+    error: bookingsError,
+    isLoading: bookingsLoading,
+    mutate: mutateBookings,
+  } = useSWR<{ bookings: Booking[] }>(bookingsKey, fetcher);
+
+  const bookings = useMemo(() => bookingsData?.bookings || [], [bookingsData]);
+
+  const anyError = vehicleError || bookingsError;
+  useEffect(() => {
+    if (anyError && (anyError as ApiError).status === 401) {
+      router.push("/login");
+    }
+  }, [anyError, router]);
+
+  const loading = vehicleLoading && !vehicle;
+  const listLoading = bookingsLoading && !bookingsData;
+
   const handlePrevMonth = () => {
     setSelectedMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
   };
@@ -92,101 +132,47 @@ export default function VehicleBookingsPage() {
     );
   }, [selectedMonth]);
 
-  // Check ?date= query param on initial load to set the correct month
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const dateParam = params.get("date");
-    if (dateParam) {
-      const [year, month] = dateParam.split("-").map(Number);
-      if (year && month) {
-        setSelectedMonth(new Date(year, month - 1, 1));
-      }
+  const openBookingDetails = useCallback(async (booking: Booking) => {
+    setSelectedBooking(booking);
+    setPartAmount(booking.balanceAmount > 0 ? String(booking.balanceAmount) : "");
+    setPartMethod("cash");
+    setPartNote("");
+    setPaymentError("");
+    setPaymentSuccessMsg("");
+    setPaymentsLoading(true);
+
+    try {
+      const data = await api.get<{ payments: BookingPayment[] }>(`/api/bookings/${booking._id}/payments`);
+      setBookingPayments(data.payments || []);
+    } catch (err: unknown) {
+      setPaymentError(err instanceof Error ? err.message : "Failed to load payment history. Please try again.");
+    } finally {
+      setPaymentsLoading(false);
     }
   }, []);
 
-  // Fetch Vehicle Info
+  // Auto-select booking & check paymentFailed param from URL search parameters
   useEffect(() => {
-    if (!id) return;
-    let isMounted = true;
+    if (typeof window === "undefined" || !bookings.length) return;
+    const params = new URLSearchParams(window.location.search);
+    const bookingIdParam = params.get("bookingId");
+    const paymentFailedParam = params.get("paymentFailed") === "true";
 
-    const fetchVehicle = async () => {
-      try {
-        const res = await fetch(`${baseUrl}/api/vehicles/${id}`, { credentials: "include" });
-        if (res.status === 401) {
-          router.push("/login");
-          return;
-        }
-        if (!res.ok) throw new Error("Failed to load vehicle details");
-        const data = await res.json();
-        if (isMounted) setVehicle(data);
-      } catch (err: unknown) {
-        if (isMounted) {
-          setErrorMessage(err instanceof Error ? err.message : "Error fetching vehicle");
-        }
-      }
-    };
-
-    fetchVehicle();
-    return () => {
-      isMounted = false;
-    };
-  }, [id, router]);
-
-  // Fetch Bookings for Selected Month
-  useEffect(() => {
-    if (!id) return;
-    let isMounted = true;
-
-    const loadBookings = async () => {
-      try {
-        const year = selectedMonth.getFullYear();
-        const month = selectedMonth.getMonth();
-        const from = new Date(year, month, 1, 0, 0, 0, 0).toISOString();
-        const to = new Date(year, month + 1, 0, 23, 59, 59, 999).toISOString();
-
-        const res = await fetch(
-          `${baseUrl}/api/bookings?vehicleId=${id}&from=${from}&to=${to}&limit=100`,
-          { credentials: "include" }
-        );
-
-        if (res.status === 401) {
-          router.push("/login");
-          return;
-        }
-
-        if (!res.ok) throw new Error("Failed to fetch bookings for this month");
-        const data = await res.json();
-        if (isMounted) {
-          const loadedBookings: Booking[] = data.bookings || [];
-          setBookings(loadedBookings);
-
-          // Auto-select booking if ?bookingId= is in query parameters
-          const params = new URLSearchParams(window.location.search);
-          const bookingIdParam = params.get("bookingId");
-          if (bookingIdParam) {
-            const match = loadedBookings.find((b) => b._id === bookingIdParam);
-            if (match) {
-              setSelectedBooking(match);
-            }
+    if (bookingIdParam) {
+      const match = bookings.find((b) => b._id === bookingIdParam);
+      if (match) {
+        const timer = setTimeout(() => {
+          openBookingDetails(match);
+          if (paymentFailedParam) {
+            setPaymentError(
+              "Booking confirmed! However, recording the initial payment failed. Please review and record the payment below."
+            );
           }
-        }
-      } catch (err: unknown) {
-        if (isMounted) {
-          setErrorMessage(err instanceof Error ? err.message : "Error loading monthly bookings");
-        }
-      } finally {
-        if (isMounted) {
-          setListLoading(false);
-          setLoading(false);
-        }
+        }, 0);
+        return () => clearTimeout(timer);
       }
-    };
-
-    loadBookings();
-    return () => {
-      isMounted = false;
-    };
-  }, [id, selectedMonth, router]);
+    }
+  }, [bookings, openBookingDetails]);
 
   const filteredBookings = useMemo(() => {
     return bookings.filter((b) => {
@@ -221,31 +207,6 @@ export default function VehicleBookingsPage() {
     return { totalCount, totalRevenue, totalCredited, totalDue };
   }, [bookings]);
 
-  // Handlers
-  const openBookingDetails = async (booking: Booking) => {
-    setSelectedBooking(booking);
-    setPartAmount(booking.balanceAmount > 0 ? String(booking.balanceAmount) : "");
-    setPartMethod("cash");
-    setPartNote("");
-    setPaymentError("");
-    setPaymentSuccessMsg("");
-    setPaymentsLoading(true);
-
-    try {
-      const res = await fetch(`${baseUrl}/api/bookings/${booking._id}/payments`, {
-        credentials: "include",
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setBookingPayments(data.payments || []);
-      }
-    } catch {
-      // Non-blocking
-    } finally {
-      setPaymentsLoading(false);
-    }
-  };
-
   const handleRecordPartPayment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedBooking || submittingPayment) return;
@@ -275,38 +236,28 @@ export default function VehicleBookingsPage() {
     setOverpayConfirmData(null);
 
     try {
-      const res = await fetch(`${baseUrl}/api/bookings/${selectedBooking._id}/payments`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
+      const data = await api.post<{ booking: Booking; payment?: BookingPayment }>(
+        `/api/bookings/${selectedBooking._id}/payments`,
+        {
           amount: numAmount,
           paymentMethod: partMethod,
           note: partNote.trim() || `Part-payment via ${partMethod}`,
-        }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.message || "Failed to record payment");
-      }
+        }
+      );
 
       const updatedBooking = data.booking;
       setSelectedBooking(updatedBooking);
 
       if (data.payment) {
-        setBookingPayments((prev) => [data.payment, ...prev]);
+        setBookingPayments((prev) => [data.payment!, ...prev]);
       }
-
-      setBookings((prev) =>
-        prev.map((b) => (b._id === updatedBooking._id ? { ...b, ...updatedBooking } : b))
-      );
 
       setPartAmount(updatedBooking.balanceAmount > 0 ? String(updatedBooking.balanceAmount) : "");
       setPartNote("");
       setPaymentSuccessMsg("Payment recorded successfully & credited to vehicle wallet!");
 
-      await invalidateVehicleData(id);
+      await mutateBookings();
+      if (id) await invalidateVehicleData(id);
     } catch (err: unknown) {
       setPaymentError(err instanceof Error ? err.message : "Error recording payment");
     } finally {
@@ -336,33 +287,20 @@ export default function VehicleBookingsPage() {
     setCancelError("");
 
     try {
-      const res = await fetch(`${baseUrl}/api/bookings/${cancellingBooking._id}/cancel`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          refundAmount: parsedRefund,
-          refundMethod,
-          cancellationNote: cancellationNote.trim(),
-        }),
+      const data = await api.post<{ booking: Booking }>(`/api/bookings/${cancellingBooking._id}/cancel`, {
+        refundAmount: parsedRefund,
+        refundMethod,
+        cancellationNote: cancellationNote.trim(),
       });
 
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.message || "Failed to cancel booking");
-      }
-
       const cancelled = data.booking;
-
-      setBookings((prev) =>
-        prev.map((b) => (b._id === cancelled._id ? { ...b, ...cancelled } : b))
-      );
 
       if (selectedBooking && selectedBooking._id === cancelled._id) {
         setSelectedBooking(cancelled);
       }
 
-      await invalidateVehicleData(id);
+      await mutateBookings();
+      if (id) await invalidateVehicleData(id);
       setCancellingBooking(null);
     } catch (err: unknown) {
       setCancelError(err instanceof Error ? err.message : "Error processing cancellation");
@@ -418,34 +356,21 @@ export default function VehicleBookingsPage() {
     setEditError("");
 
     try {
-      const res = await fetch(`${baseUrl}/api/bookings/${editingBooking._id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          customerName: editCustomerName.trim(),
-          startDateTime: start.toISOString(),
-          endDateTime: end.toISOString(),
-          totalAmount: parsedTotal,
-        }),
+      const data = await api.patch<{ booking: Booking }>(`/api/bookings/${editingBooking._id}`, {
+        customerName: editCustomerName.trim(),
+        startDateTime: start.toISOString(),
+        endDateTime: end.toISOString(),
+        totalAmount: parsedTotal,
       });
 
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.message || "Failed to update booking");
-      }
-
       const updatedBooking = data.booking;
-
-      setBookings((prev) =>
-        prev.map((b) => (b._id === updatedBooking._id ? { ...b, ...updatedBooking } : b))
-      );
 
       if (selectedBooking && selectedBooking._id === updatedBooking._id) {
         setSelectedBooking(updatedBooking);
       }
 
-      await invalidateVehicleData(id);
+      await mutateBookings();
+      if (id) await invalidateVehicleData(id);
       setEditingBooking(null);
     } catch (err: unknown) {
       setEditError(err instanceof Error ? err.message : "Error updating booking");

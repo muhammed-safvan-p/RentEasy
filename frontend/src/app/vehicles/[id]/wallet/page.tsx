@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, ShieldAlert, AlertCircle } from "lucide-react";
-import { invalidateVehicleData } from "@/hooks/useVehicleData";
-import { API_BASE_URL as baseUrl } from "@/lib/api";
+import useSWR from "swr";
+import { useVehicleDetail, useVehicleWallet, invalidateVehicleData } from "@/hooks/useVehicleData";
+import { fetcher, api, ApiError } from "@/lib/api";
 import {
   formatCurrency,
   formatDateNice,
@@ -15,36 +16,19 @@ import {
   getLocalTodayDateString,
   toSafeDateISOString,
 } from "@/lib/formatters";
-import { WalletData, WalletTransaction } from "@/types/wallet";
+import { WalletTransaction } from "@/types/wallet";
 import { WalletSummaryCards } from "@/components/wallet/WalletSummaryCards";
 import { WalletMonthHeader } from "@/components/wallet/WalletMonthHeader";
 import { TransactionList } from "@/components/wallet/TransactionList";
 import { AddTransactionModal } from "@/components/wallet/AddTransactionModal";
 import { TransactionDetailModal } from "@/components/wallet/TransactionDetailModal";
 
-interface Vehicle {
-  _id: string;
-  name: string;
-  plateNumber: string;
-}
-
 export default function VehicleWalletPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
 
-  const [vehicle, setVehicle] = useState<Vehicle | null>(null);
-  const [wallet, setWallet] = useState<WalletData | null>(null);
-  const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
-  const [monthIncome, setMonthIncome] = useState<number>(0);
-  const [monthExpense, setMonthExpense] = useState<number>(0);
-
   const [selectedMonth, setSelectedMonth] = useState<Date>(() => new Date());
   const [filter, setFilter] = useState<"all" | "income" | "expense">("all");
-
-  const [loading, setLoading] = useState(true);
-  const [txLoading, setTxLoading] = useState(false);
-  const [errorStatus, setErrorStatus] = useState<number | null>(null);
-  const [errorMessage, setErrorMessage] = useState("");
 
   // Details Modal State
   const [selectedTx, setSelectedTx] = useState<WalletTransaction | null>(null);
@@ -70,132 +54,52 @@ export default function VehicleWalletPage() {
     );
   }, [selectedMonth]);
 
-  // Fetch initial data
+  // Centralized SWR hooks
+  const { vehicle, isLoading: vehicleLoading, error: vehicleError } = useVehicleDetail(id);
+  const { wallet, isLoading: walletLoading, error: walletError } = useVehicleWallet(id);
+
+  const monthParam = formatMonthParam(selectedMonth);
+  const txKey = id ? `/api/vehicles/${id}/wallet/transactions?month=${monthParam}` : null;
+  const {
+    data: txData,
+    error: txError,
+    isLoading: txLoading,
+  } = useSWR<{
+    transactions?: WalletTransaction[];
+    monthIncome?: number;
+    monthExpense?: number;
+  }>(txKey, fetcher);
+
+  const transactions = useMemo(() => txData?.transactions || [], [txData]);
+  const monthIncome = txData?.monthIncome || 0;
+  const monthExpense = txData?.monthExpense || 0;
+
+  const anyError = vehicleError || walletError || txError;
+  const errorStatus = anyError ? ((anyError as ApiError).status || 500) : null;
+  const errorMessage = anyError
+    ? (anyError as ApiError).status === 403
+      ? "You do not have permission to view this vehicle's wallet."
+      : (anyError as ApiError).status === 404
+      ? "Vehicle or wallet not found."
+      : anyError.message || "An unexpected error occurred"
+    : "";
+
+  // Auth redirect if 401
   useEffect(() => {
-    if (!id) return;
-    let isMounted = true;
+    if (anyError && (anyError as ApiError).status === 401) {
+      router.push("/login");
+    }
+  }, [anyError, router]);
 
-    const fetchInitialData = async () => {
-      setLoading(true);
-      setErrorStatus(null);
-
-      const monthParam = formatMonthParam(selectedMonth);
-
-      try {
-        const [vehicleRes, walletRes, txRes] = await Promise.all([
-          fetch(`${baseUrl}/api/vehicles/${id}`, { credentials: "include" }),
-          fetch(`${baseUrl}/api/vehicles/${id}/wallet`, { credentials: "include" }),
-          fetch(`${baseUrl}/api/vehicles/${id}/wallet/transactions?month=${monthParam}`, {
-            credentials: "include",
-          }),
-        ]);
-
-        if (
-          vehicleRes.status === 401 ||
-          walletRes.status === 401 ||
-          txRes.status === 401
-        ) {
-          router.push("/login");
-          return;
-        }
-
-        if (
-          vehicleRes.status === 403 ||
-          walletRes.status === 403 ||
-          txRes.status === 403
-        ) {
-          if (isMounted) {
-            setErrorStatus(403);
-            setErrorMessage("You do not have permission to view this vehicle's wallet.");
-            setLoading(false);
-          }
-          return;
-        }
-
-        if (vehicleRes.status === 404 || walletRes.status === 404) {
-          if (isMounted) {
-            setErrorStatus(404);
-            setErrorMessage("Vehicle or wallet not found.");
-            setLoading(false);
-          }
-          return;
-        }
-
-        if (!vehicleRes.ok) throw new Error("Failed to load vehicle details");
-        if (!walletRes.ok) throw new Error("Failed to load vehicle wallet");
-        if (!txRes.ok) throw new Error("Failed to load transactions");
-
-        const vehicleData = await vehicleRes.json();
-        const walletData = await walletRes.json();
-        const txData = await txRes.json();
-
-        if (isMounted) {
-          setVehicle(vehicleData);
-          setWallet(walletData.wallet || walletData);
-          setTransactions(txData.transactions || []);
-          setMonthIncome(txData.monthIncome || 0);
-          setMonthExpense(txData.monthExpense || 0);
-        }
-      } catch (err: unknown) {
-        if (isMounted) {
-          setErrorStatus(500);
-          setErrorMessage(err instanceof Error ? err.message : "An unexpected error occurred");
-        }
-      } finally {
-        if (isMounted) setLoading(false);
-      }
-    };
-
-    fetchInitialData();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [id, router]);
-
-  const fetchTransactionsForMonth = useCallback(
-    async (monthDate: Date) => {
-      if (!id) return;
-      setTxLoading(true);
-      const monthParam = formatMonthParam(monthDate);
-
-      try {
-        const res = await fetch(
-          `${baseUrl}/api/vehicles/${id}/wallet/transactions?month=${monthParam}`,
-          { credentials: "include" }
-        );
-
-        if (res.status === 401) {
-          router.push("/login");
-          return;
-        }
-
-        if (res.ok) {
-          const data = await res.json();
-          setTransactions(data.transactions || []);
-          setMonthIncome(data.monthIncome || 0);
-          setMonthExpense(data.monthExpense || 0);
-        }
-      } catch (err: unknown) {
-        console.error("Error fetching transactions for month:", err);
-      } finally {
-        setTxLoading(false);
-      }
-    },
-    [id, router]
-  );
+  const loading = vehicleLoading || walletLoading || (txLoading && !txData);
 
   const handlePrevMonth = () => {
-    const prev = new Date(selectedMonth.getFullYear(), selectedMonth.getMonth() - 1, 1);
-    setSelectedMonth(prev);
-    fetchTransactionsForMonth(prev);
+    setSelectedMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
   };
 
   const handleNextMonth = () => {
     if (isCurrentMonth) return;
-    const next = new Date(selectedMonth.getFullYear(), selectedMonth.getMonth() + 1, 1);
-    setSelectedMonth(next);
-    fetchTransactionsForMonth(next);
+    setSelectedMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
   };
 
   const filteredTransactions = useMemo(() => {
@@ -245,39 +149,9 @@ export default function VehicleWalletPage() {
 
     setDeletingTx(true);
     try {
-      const res = await fetch(`${baseUrl}/api/vehicles/${id}/wallet/transactions/${txId}`, {
-        method: "DELETE",
-        credentials: "include",
-      });
-
-      if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.message || "Failed to delete transaction");
-      }
-
+      await api.delete(`/api/vehicles/${id}/wallet/transactions/${txId}`);
       setSelectedTx(null);
       await invalidateVehicleData(id);
-
-      const monthParam = formatMonthParam(selectedMonth);
-      const [walletRes, txRes] = await Promise.all([
-        fetch(`${baseUrl}/api/vehicles/${id}/wallet`, { credentials: "include" }),
-        fetch(
-          `${baseUrl}/api/vehicles/${id}/wallet/transactions?month=${monthParam}`,
-          { credentials: "include" }
-        ),
-      ]);
-
-      if (walletRes.ok) {
-        const walletData = await walletRes.json();
-        setWallet(walletData.wallet || walletData);
-      }
-
-      if (txRes.ok) {
-        const txData = await txRes.json();
-        setTransactions(txData.transactions || []);
-        setMonthIncome(txData.monthIncome || 0);
-        setMonthExpense(txData.monthExpense || 0);
-      }
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : "Error deleting transaction");
     } finally {
@@ -314,55 +188,22 @@ export default function VehicleWalletPage() {
     setSubmitting(true);
 
     try {
-      const res = await fetch(`${baseUrl}/api/vehicles/${id}/wallet/transactions`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        credentials: "include",
-        body: JSON.stringify({
-          type: formType,
-          paymentMethod: formPaymentMethod,
-          amount: parsedAmount,
-          note: formNote.trim(),
-          transactionDate: toSafeDateISOString(formDate),
-        }),
+      await api.post(`/api/vehicles/${id}/wallet/transactions`, {
+        type: formType,
+        paymentMethod: formPaymentMethod,
+        amount: parsedAmount,
+        note: formNote.trim(),
+        transactionDate: toSafeDateISOString(formDate),
       });
-
-      if (res.status === 401) {
-        router.push("/login");
-        return;
-      }
-
-      if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.message || "Failed to add transaction");
-      }
 
       setIsModalOpen(false);
       await invalidateVehicleData(id);
-
-      const [walletRes, txRes] = await Promise.all([
-        fetch(`${baseUrl}/api/vehicles/${id}/wallet`, { credentials: "include" }),
-        fetch(
-          `${baseUrl}/api/vehicles/${id}/wallet/transactions?month=${formatMonthParam(selectedMonth)}`,
-          { credentials: "include" }
-        ),
-      ]);
-
-      if (walletRes.ok) {
-        const walletData = await walletRes.json();
-        setWallet(walletData.wallet || walletData);
-      }
-
-      if (txRes.ok) {
-        const txData = await txRes.json();
-        setTransactions(txData.transactions || []);
-        setMonthIncome(txData.monthIncome || 0);
-        setMonthExpense(txData.monthExpense || 0);
-      }
     } catch (err: unknown) {
-      setFormError(err instanceof Error ? err.message : "Error saving transaction");
+      if ((err as ApiError).status === 401) {
+        router.push("/login");
+        return;
+      }
+      setFormError(err instanceof Error ? err.message : "Failed to add transaction");
     } finally {
       setSubmitting(false);
     }

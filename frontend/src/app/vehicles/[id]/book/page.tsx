@@ -11,8 +11,9 @@ import {
   Car,
   ChevronRight,
 } from "lucide-react";
-import { invalidateVehicleData } from "@/hooks/useVehicleData";
-import { API_BASE_URL as baseUrl } from "@/lib/api";
+import useSWR from "swr";
+import { useVehicleDetail, invalidateVehicleData } from "@/hooks/useVehicleData";
+import { api, fetcher, ApiError } from "@/lib/api";
 import {
   formatCurrency,
   formatDateNice,
@@ -45,18 +46,44 @@ export default function VehicleBookingPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
 
-  // State
-  const [vehicle, setVehicle] = useState<BookingVehicle | null>(null);
-  const [calendarBookings, setCalendarBookings] = useState<CalendarBooking[]>([]);
-  const [calendarLocks, setCalendarLocks] = useState<VehicleLock[]>([]);
-  const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
   // Form Fields
   const [customerName, setCustomerName] = useState("");
-  const [startDateTime, setStartDateTime] = useState("");
-  const [endDateTime, setEndDateTime] = useState("");
+  const [startDateTime, setStartDateTime] = useState(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const dateParam = params.get("date");
+      if (dateParam) {
+        const [year, month, day] = dateParam.split("-").map(Number);
+        return toLocalISOString(new Date(year, month - 1, day, 9, 0, 0));
+      }
+    }
+    const now = new Date();
+    const start = new Date(now);
+    start.setHours(start.getHours() + 1, 0, 0, 0);
+    return toLocalISOString(start);
+  });
+  const [endDateTime, setEndDateTime] = useState(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const dateParam = params.get("date");
+      if (dateParam) {
+        const [year, month, day] = dateParam.split("-").map(Number);
+        const start = new Date(year, month - 1, day, 9, 0, 0);
+        const end = new Date(start);
+        end.setDate(end.getDate() + 1);
+        return toLocalISOString(end);
+      }
+    }
+    const now = new Date();
+    const start = new Date(now);
+    start.setHours(start.getHours() + 1, 0, 0, 0);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 1);
+    return toLocalISOString(end);
+  });
   const [customTotalAmount, setCustomTotalAmount] = useState<number | null>(null);
 
   // Payment section state
@@ -70,81 +97,45 @@ export default function VehicleBookingPage() {
 
   const isAmountOverridden = customTotalAmount !== null;
 
-  // Initialize Default Time Slot — respects ?date= query param from calendar
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const dateParam = params.get("date"); // YYYY-MM-DD
+  // Centralized SWR hooks
+  const { vehicle: rawVehicle, isLoading: vehicleLoading, error: vehicleError } = useVehicleDetail(id);
+  const vehicle = rawVehicle as unknown as BookingVehicle | null;
 
-    let start: Date;
-    if (dateParam) {
-      // Parse as local date to avoid UTC offset day-shifting
-      const [year, month, day] = dateParam.split("-").map(Number);
-      start = new Date(year, month - 1, day, 9, 0, 0); // 9:00 AM on selected date
-    } else {
-      const now = new Date();
-      start = new Date(now);
-      start.setHours(start.getHours() + 1, 0, 0, 0);
+  const monthKey = startDateTime ? startDateTime.slice(0, 7) : "";
+  const from = useMemo(() => {
+    const baseDate = monthKey ? new Date(`${monthKey}-01`) : new Date();
+    const validBase = isNaN(baseDate.getTime()) ? new Date() : baseDate;
+    return new Date(validBase.getFullYear(), validBase.getMonth() - 1, 1).toISOString();
+  }, [monthKey]);
+
+  const to = useMemo(() => {
+    const baseDate = monthKey ? new Date(`${monthKey}-01`) : new Date();
+    const validBase = isNaN(baseDate.getTime()) ? new Date() : baseDate;
+    return new Date(validBase.getFullYear(), validBase.getMonth() + 2, 0, 23, 59, 59, 999).toISOString();
+  }, [monthKey]);
+
+  const calKey = id
+    ? `/api/vehicles/${id}/calendar?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`
+    : null;
+
+  const {
+    data: calData,
+    error: calError,
+    isLoading: calLoading,
+  } = useSWR<{ bookings?: CalendarBooking[]; locks?: VehicleLock[] }>(calKey, fetcher, {
+    refreshInterval: 15000,
+  });
+
+  const calendarBookings = useMemo(() => calData?.bookings || [], [calData]);
+  const calendarLocks = useMemo(() => calData?.locks || [], [calData]);
+  const loading = (vehicleLoading && !vehicle) || (calLoading && !calData);
+
+  const anyError = vehicleError || calError;
+  useEffect(() => {
+    if (anyError && (anyError as ApiError).status === 401) {
+      router.push("/login");
     }
-
-    const end = new Date(start);
-    end.setDate(end.getDate() + 1);
-
-    setStartDateTime(toLocalISOString(start));
-    setEndDateTime(toLocalISOString(end));
-  }, []);
-
-  // Fetch Vehicle and Calendar Data
-  useEffect(() => {
-    if (!id) return;
-    let isMounted = true;
-
-    const loadData = async () => {
-      setLoading(true);
-      setErrorMessage("");
-
-      try {
-        const baseDate = startDateTime ? new Date(startDateTime) : new Date();
-        const validBase = isNaN(baseDate.getTime()) ? new Date() : baseDate;
-        const from = new Date(validBase.getFullYear(), validBase.getMonth() - 1, 1).toISOString();
-        const to = new Date(validBase.getFullYear(), validBase.getMonth() + 2, 0, 23, 59, 59, 999).toISOString();
-
-        const [vehRes, calRes] = await Promise.all([
-          fetch(`${baseUrl}/api/vehicles/${id}`, { credentials: "include" }),
-          fetch(
-            `${baseUrl}/api/vehicles/${id}/calendar?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
-            { credentials: "include" }
-          ),
-        ]);
-
-        if (vehRes.status === 401 || calRes.status === 401) {
-          router.push("/login");
-          return;
-        }
-
-        if (!vehRes.ok) throw new Error("Could not fetch vehicle details");
-
-        const vehData = await vehRes.json();
-        const calData = calRes.ok ? await calRes.json() : { bookings: [], locks: [] };
-
-        if (isMounted) {
-          setVehicle(vehData);
-          setCalendarBookings(calData.bookings || []);
-          setCalendarLocks(calData.locks || []);
-        }
-      } catch (err: unknown) {
-        if (isMounted) {
-          setErrorMessage(err instanceof Error ? err.message : "Failed to load booking data");
-        }
-      } finally {
-        if (isMounted) setLoading(false);
-      }
-    };
-
-    loadData();
-    return () => {
-      isMounted = false;
-    };
-  }, [id, router, startDateTime ? startDateTime.slice(0, 7) : ""]);
+  }, [anyError, router]);
 
   // Duration & Pricing Calculations
   const durationInfo = useMemo(() => {
@@ -298,50 +289,38 @@ export default function VehicleBookingPage() {
 
     try {
       // 1. Create Booking
-      const createRes = await fetch(`${baseUrl}/api/bookings`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          vehicleId: vehicle._id,
-          customerName: customerName.trim(),
-          startDateTime: toSafeDateISOString(startDateTime),
-          endDateTime: toSafeDateISOString(endDateTime),
-          totalAmount: Number(totalAmount),
-        }),
+      const createData = await api.post<{ booking: ConfirmedBooking }>(`/api/bookings`, {
+        vehicleId: vehicle._id,
+        customerName: customerName.trim(),
+        startDateTime: toSafeDateISOString(startDateTime),
+        endDateTime: toSafeDateISOString(endDateTime),
+        totalAmount: Number(totalAmount),
       });
-
-      const createData = await createRes.json();
-
-      if (!createRes.ok) {
-        throw new Error(createData.message || "Failed to create booking");
-      }
 
       const newBooking = createData.booking;
       let finalBookingState = newBooking;
 
       // 2. If Payment recorded immediately
       if (recordPaymentNow && Number(paidAmount) > 0) {
-        const payRes = await fetch(`${baseUrl}/api/bookings/${newBooking._id}/payments`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({
-            amount: Number(paidAmount),
-            paymentMethod,
-            note: paymentNote.trim() || "Initial Advance / Token Payment",
-          }),
-        });
-
-        const payData = await payRes.json();
-        if (!payRes.ok) {
-          throw new Error(
-            payData.message ||
-              "Booking created, but recording initial payment failed. Please record payment in booking details."
+        try {
+          const payData = await api.post<{ booking: ConfirmedBooking }>(
+            `/api/bookings/${newBooking._id}/payments`,
+            {
+              amount: Number(paidAmount),
+              paymentMethod,
+              note: paymentNote.trim() || "Initial Advance / Token Payment",
+            }
           );
+          finalBookingState = payData.booking;
+        } catch {
+          // Booking exists in database! Invalidate caches so other screens reflect the booking,
+          // then redirect operator to bookings page with query params to retry payment without ghost bookings.
+          await invalidateVehicleData(vehicle._id);
+          router.push(
+            `/vehicles/${vehicle._id}/bookings?bookingId=${newBooking._id}&paymentFailed=true`
+          );
+          return;
         }
-
-        finalBookingState = payData.booking;
       }
 
       // Invalidate global SWR caches

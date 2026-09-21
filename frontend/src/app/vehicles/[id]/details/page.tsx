@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
-import { API_BASE_URL as baseUrl } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { formatCurrency, formatFullDateTime, formatDateNice } from "@/lib/formatters";
 import { ErrorBanner } from "@/components/common/ErrorBanner";
 import {
@@ -28,8 +28,9 @@ import {
   Loader2,
   X,
 } from "lucide-react";
-import { Vehicle, OperationalNote, VehicleOwner } from "@/types";
+import { Vehicle, OperationalNote } from "@/types";
 import { DealerManagementCard } from "@/components/dealers/DealerManagementCard";
+import { logger } from "@/lib/logger";
 
 interface VehicleStats {
   totalTrips: number;
@@ -71,40 +72,11 @@ export default function VehicleProfilePage() {
       setErrorStatus(null);
 
       try {
-        const [vehicleRes, statsRes, userRes] = await Promise.all([
-          fetch(`${baseUrl}/api/vehicles/${id}`, { credentials: "include" }),
-          fetch(`${baseUrl}/api/vehicles/${id}/stats`, { credentials: "include" }),
-          fetch(`${baseUrl}/api/user/me`, { credentials: "include" }),
+        const [vehicleData, statsData, userData] = await Promise.all([
+          api.get<Vehicle>(`/api/vehicles/${id}`),
+          api.get<VehicleStats>(`/api/vehicles/${id}/stats`).catch(() => ({ totalTrips: 0, totalRevenue: 0 })),
+          api.get<CurrentUser>(`/api/user/me`).catch(() => null),
         ]);
-
-        if (vehicleRes.status === 401 || statsRes.status === 401) {
-          router.push("/login");
-          return;
-        }
-
-        if (vehicleRes.status === 403 || statsRes.status === 403) {
-          if (isMounted) {
-            setErrorStatus(403);
-            setErrorMessage("You do not have permission to view this vehicle's profile.");
-            setLoading(false);
-          }
-          return;
-        }
-
-        if (vehicleRes.status === 404) {
-          if (isMounted) {
-            setErrorStatus(404);
-            setErrorMessage("Vehicle not found.");
-            setLoading(false);
-          }
-          return;
-        }
-
-        if (!vehicleRes.ok) throw new Error("Failed to load vehicle profile");
-
-        const vehicleData = await vehicleRes.json();
-        const statsData = statsRes.ok ? await statsRes.json() : { totalTrips: 0, totalRevenue: 0 };
-        const userData = userRes.ok ? await userRes.json() : null;
 
         if (isMounted) {
           setVehicle(vehicleData);
@@ -112,9 +84,22 @@ export default function VehicleProfilePage() {
           setCurrentUser(userData);
         }
       } catch (err: unknown) {
+        const apiErr = err as ApiError;
+        if (apiErr.status === 401) {
+          router.push("/login");
+          return;
+        }
         if (isMounted) {
-          setErrorStatus(500);
-          setErrorMessage(err instanceof Error ? err.message : "An unexpected error occurred");
+          if (apiErr.status === 403) {
+            setErrorStatus(403);
+            setErrorMessage("You do not have permission to view this vehicle's profile.");
+          } else if (apiErr.status === 404) {
+            setErrorStatus(404);
+            setErrorMessage("Vehicle not found.");
+          } else {
+            setErrorStatus(500);
+            setErrorMessage(apiErr.message || "An unexpected error occurred");
+          }
         }
       } finally {
         if (isMounted) setLoading(false);
@@ -126,7 +111,7 @@ export default function VehicleProfilePage() {
     return () => {
       isMounted = false;
     };
-  }, [id, baseUrl, router]);
+  }, [id, router]);
 
   const handleCopyPlate = () => {
     if (!vehicle?.plateNumber) return;
@@ -149,19 +134,10 @@ export default function VehicleProfilePage() {
     setAddingNote(true);
 
     try {
-      const res = await fetch(`${baseUrl}/api/vehicles/${id}/notes`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ text: trimmed }),
+      const data = await api.post<{ note: OperationalNote }>(`/api/vehicles/${id}/notes`, {
+        text: trimmed,
       });
 
-      if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.message || "Failed to add note");
-      }
-
-      const data = await res.json();
       if (data.note) {
         setVehicle((prev) =>
           prev
@@ -189,17 +165,7 @@ export default function VehicleProfilePage() {
     setDeletingNoteId(noteId);
 
     try {
-      const res = await fetch(`${baseUrl}/api/vehicles/${id}/notes/${noteId}`, {
-        method: "DELETE",
-        credentials: "include",
-      });
-
-      if (!res.ok) {
-        const errData = await res.json();
-        alert(errData.message || "Failed to delete note");
-        return;
-      }
-
+      await api.delete(`/api/vehicles/${id}/notes/${noteId}`);
       setVehicle((prev) =>
         prev
           ? {
@@ -207,10 +173,10 @@ export default function VehicleProfilePage() {
               operationalNotes: prev.operationalNotes?.filter((n) => n._id !== noteId),
             }
           : null
-        );
-    } catch (err) {
-      console.error("Error deleting note", err);
-      alert("Error deleting note");
+      );
+    } catch (err: unknown) {
+      logger.error("Error deleting note", err);
+      alert(err instanceof Error ? err.message : "Error deleting note");
     } finally {
       setDeletingNoteId(null);
     }
