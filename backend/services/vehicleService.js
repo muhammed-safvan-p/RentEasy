@@ -2,22 +2,38 @@ const vehicleRepository = require('../repositories/vehicleRepository');
 const bookingRepository = require('../repositories/bookingRepository');
 const walletRepository = require('../repositories/walletRepository');
 const lockRepository = require('../repositories/lockRepository');
+const { getMonthBoundsUTC } = require('../utils/dateUtils');
 const AppError = require('../utils/AppError');
 
 class VehicleService {
-  async getVehicleById(vehicleId) {
-    const vehicle = await vehicleRepository.findById(vehicleId, [
-      { path: 'ownerIds', select: 'username' },
-      { path: 'operationalNotes.createdBy', select: 'username' },
-    ]);
+  async getVehicleById(vehicleOrId) {
+    let vehicle;
+    if (vehicleOrId && typeof vehicleOrId === 'object' && vehicleOrId._id) {
+      vehicle = vehicleOrId;
+      // Populate fields needed by client if not already populated
+      if (!vehicle.populated('ownerIds') || !vehicle.populated('operationalNotes.createdBy')) {
+        await vehicle.populate([
+          { path: 'ownerIds', select: 'username' },
+          { path: 'operationalNotes.createdBy', select: 'username' },
+        ]);
+      }
+    } else {
+      vehicle = await vehicleRepository.findById(vehicleOrId, [
+        { path: 'ownerIds', select: 'username' },
+        { path: 'operationalNotes.createdBy', select: 'username' },
+      ]);
+    }
     if (!vehicle) {
       throw new AppError('Vehicle not found', 404);
     }
     return vehicle;
   }
 
-  async addOperationalNote(vehicleId, text, userId) {
-    const vehicle = await vehicleRepository.findById(vehicleId);
+  async addOperationalNote(vehicleOrId, text, userId) {
+    const vehicle =
+      vehicleOrId && typeof vehicleOrId === 'object' && vehicleOrId._id
+        ? vehicleOrId
+        : await vehicleRepository.findById(vehicleOrId);
     if (!vehicle) {
       throw new AppError('Vehicle not found', 404);
     }
@@ -41,8 +57,11 @@ class VehicleService {
     };
   }
 
-  async deleteOperationalNote(vehicleId, noteId, user) {
-    const vehicle = await vehicleRepository.findById(vehicleId);
+  async deleteOperationalNote(vehicleOrId, noteId, user) {
+    const vehicle =
+      vehicleOrId && typeof vehicleOrId === 'object' && vehicleOrId._id
+        ? vehicleOrId
+        : await vehicleRepository.findById(vehicleOrId);
     if (!vehicle) {
       throw new AppError('Vehicle not found', 404);
     }
@@ -104,20 +123,7 @@ class VehicleService {
   }
 
   async getBookingsByMonth(vehicleId, month) {
-    let monthStart;
-    let monthEnd;
-
-    if (month && typeof month === 'string' && month.includes('-')) {
-      const [yearStr, monthStr] = month.split('-');
-      const year = parseInt(yearStr, 10);
-      const monthNum = parseInt(monthStr, 10); // 1-12
-      monthStart = new Date(Date.UTC(year, monthNum - 1, 1, 0, 0, 0, 0));
-      monthEnd = new Date(Date.UTC(year, monthNum, 0, 23, 59, 59, 999));
-    } else {
-      const now = new Date();
-      monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0, 0));
-      monthEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0, 23, 59, 59, 999));
-    }
+    const { start: monthStart, end: monthEnd } = getMonthBoundsUTC(month);
 
     // Fetch bookings and locks in parallel for the same month
     const [bookings, locks] = await Promise.all([

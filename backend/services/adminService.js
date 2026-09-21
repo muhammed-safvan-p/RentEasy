@@ -1,17 +1,38 @@
 const bcrypt = require('bcryptjs');
-const Vehicle = require('../models/Vehicle');
 const vehicleRepository = require('../repositories/vehicleRepository');
 const userRepository = require('../repositories/userRepository');
 const walletRepository = require('../repositories/walletRepository');
+const bookingRepository = require('../repositories/bookingRepository');
+const dealerRepository = require('../repositories/dealerRepository');
+const lockRepository = require('../repositories/lockRepository');
 const walletService = require('./walletService');
+const { runInTransaction } = require('../utils/transactionRunner');
 const AppError = require('../utils/AppError');
 
 class AdminService {
-  async getVehicles() {
+  async getVehicles(queryParams = {}) {
+    const { page, limit } = queryParams;
+
+    if (page || limit) {
+      const pageNum = Math.max(1, parseInt(page, 10) || 1);
+      const limitNum = Math.max(1, Math.min(100, parseInt(limit, 10) || 100));
+      const skip = (pageNum - 1) * limitNum;
+
+      return await vehicleRepository.findAll(
+        {},
+        { path: 'ownerIds', select: 'username' },
+        { createdAt: -1 },
+        limitNum,
+        skip
+      );
+    }
+
+    // Default safe ceiling capped at 100 to prevent unbounded memory spikes
     return await vehicleRepository.findAll(
       {},
       { path: 'ownerIds', select: 'username' },
-      { createdAt: -1 }
+      { createdAt: -1 },
+      100
     );
   }
 
@@ -165,11 +186,7 @@ class AdminService {
       throw new AppError('Vehicle not found', 404);
     }
 
-    const Booking = require('../models/Booking');
-    const activeBookingsCount = await Booking.countDocuments({
-      vehicleId: id,
-      status: { $in: ['confirmed', 'in_progress', 'payment_pending'] },
-    });
+    const activeBookingsCount = await bookingRepository.countActiveByVehicle(id);
     if (activeBookingsCount > 0) {
       throw new AppError(
         `Cannot delete vehicle with ${activeBookingsCount} active booking(s). Please complete or cancel active bookings first.`,
@@ -177,7 +194,19 @@ class AdminService {
       );
     }
 
-    await vehicleRepository.deleteById(id);
+    // Cascade delete vehicle and all associated records atomically in a transaction
+    await runInTransaction(async (session) => {
+      await Promise.all([
+        vehicleRepository.deleteById(id, session),
+        dealerRepository.deleteManyByVehicleId(id, session),
+        lockRepository.deleteManyByVehicleId(id, session),
+        walletRepository.deleteByVehicleId(id, session),
+        walletRepository.deleteTransactionsByVehicleId(id, session),
+        bookingRepository.deletePaymentsByVehicleId(id, session),
+        bookingRepository.deleteManyByVehicleId(id, session),
+      ]);
+    });
+
     return { message: 'Vehicle deleted successfully' };
   }
 
@@ -186,25 +215,23 @@ class AdminService {
   }
 
   async getUsers(filter = {}) {
-    const users = await userRepository.findAll(filter, '-password', { createdAt: -1 });
-    
-    // Count associated vehicles for each user
-    const usersWithStats = await Promise.all(
-      users.map(async (u) => {
-        const vehicleCount = await Vehicle.countDocuments({ ownerIds: u._id });
-        return {
-          _id: u._id,
-          username: u.username,
-          role: u.role,
-          isBlock: u.isBlock,
-          vehicleCount,
-          createdAt: u.createdAt,
-          updatedAt: u.updatedAt,
-        };
-      })
-    );
+    const [users, vehicleCounts] = await Promise.all([
+      userRepository.findAll(filter, '-password', { createdAt: -1 }),
+      vehicleRepository.aggregateOwnerCounts(),
+    ]);
 
-    return usersWithStats;
+    const countMap = new Map();
+    vehicleCounts.forEach((c) => countMap.set(c._id.toString(), c.count));
+
+    return users.map((u) => ({
+      _id: u._id,
+      username: u.username,
+      role: u.role,
+      isBlock: u.isBlock,
+      vehicleCount: countMap.get(u._id.toString()) || 0,
+      createdAt: u.createdAt,
+      updatedAt: u.updatedAt,
+    }));
   }
 
   async createUser(userData) {
@@ -276,7 +303,7 @@ class AdminService {
     }
 
     const updatedUser = await userRepository.save(user);
-    const vehicleCount = await Vehicle.countDocuments({ ownerIds: updatedUser._id });
+    const vehicleCount = await vehicleRepository.countByOwnerId(updatedUser._id);
 
     return {
       _id: updatedUser._id,
@@ -300,7 +327,7 @@ class AdminService {
     }
 
     // Pull user from any vehicles where they are assigned as co-owner
-    await Vehicle.updateMany({ ownerIds: user._id }, { $pull: { ownerIds: user._id } });
+    await vehicleRepository.removeOwnerFromAllVehicles(user._id);
 
     await userRepository.deleteById(userId);
     return { message: 'User deleted successfully' };

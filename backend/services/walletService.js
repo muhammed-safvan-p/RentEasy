@@ -1,6 +1,8 @@
 const walletRepository = require('../repositories/walletRepository');
 const vehicleRepository = require('../repositories/vehicleRepository');
 const { runInTransaction } = require('../utils/transactionRunner');
+const { getMonthBoundsUTC } = require('../utils/dateUtils');
+const { roundCurrency } = require('../utils/currencyUtils');
 const AppError = require('../utils/AppError');
 
 class WalletService {
@@ -15,7 +17,8 @@ class WalletService {
    * @returns {Promise<Object>} The updated wallet document
    */
   async applyTransaction(session, wallet, type, paymentMethod, amount) {
-    const delta = type === 'income' ? amount : -amount;
+    const numAmount = roundCurrency(amount);
+    const delta = type === 'income' ? numAmount : -numAmount;
     const field = paymentMethod === 'cash' ? 'cashBalance' : 'bankBalance';
     const walletId = wallet._id || wallet;
 
@@ -84,20 +87,9 @@ class WalletService {
   /**
    * Lists transactions for a vehicle in a specific month and totals income/expense.
    */
-  async getWalletTransactions(vehicleId, month) {
-    let startDate, endDate;
-
-    if (month && typeof month === 'string' && month.includes('-')) {
-      const [yearStr, monthStr] = month.split('-');
-      const year = parseInt(yearStr, 10);
-      const monthNum = parseInt(monthStr, 10); // 1-12
-      startDate = new Date(Date.UTC(year, monthNum - 1, 1, 0, 0, 0));
-      endDate = new Date(Date.UTC(year, monthNum, 0, 23, 59, 59, 999));
-    } else {
-      const now = new Date();
-      startDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0));
-      endDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0, 23, 59, 59, 999));
-    }
+  async getWalletTransactions(vehicleId, month, queryParams = {}) {
+    const { start: startDate, end: endDate } = getMonthBoundsUTC(month);
+    const { page, limit } = queryParams;
 
     const filter = {
       vehicleId,
@@ -110,27 +102,45 @@ class WalletService {
       ],
     };
 
-    const transactions = await walletRepository.findTransactions(
+    // Calculate accurate monthIncome and monthExpense across all transactions in that month
+    const allMonthTransactions = await walletRepository.findTransactions(
       filter,
-      { path: 'createdBy', select: 'username' },
+      null,
       { transactionDate: -1, createdAt: -1 }
     );
 
     let monthIncome = 0;
     let monthExpense = 0;
 
-    for (const tx of transactions) {
+    for (const tx of allMonthTransactions) {
       if (tx.type === 'income') {
-        monthIncome += tx.amount;
+        monthIncome = roundCurrency(monthIncome + tx.amount);
       } else if (tx.type === 'expense') {
-        monthExpense += tx.amount;
+        monthExpense = roundCurrency(monthExpense + tx.amount);
       }
     }
 
+    const totalCount = allMonthTransactions.length;
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.max(1, Math.min(100, parseInt(limit, 10) || 100));
+    const skip = (pageNum - 1) * limitNum;
+
+    // Fetch paginated and populated transactions capped at limitNum (max 100)
+    const transactions = await walletRepository.findTransactions(
+      filter,
+      { path: 'createdBy', select: 'username' },
+      { transactionDate: -1, createdAt: -1 },
+      limitNum,
+      skip
+    );
+
     return {
+      totalCount,
+      page: pageNum,
+      totalPages: Math.ceil(totalCount / limitNum),
       transactions,
-      monthIncome,
-      monthExpense,
+      monthIncome: roundCurrency(monthIncome),
+      monthExpense: roundCurrency(monthExpense),
     };
   }
 

@@ -1,5 +1,6 @@
 const lockRepository = require('../repositories/lockRepository');
 const bookingRepository = require('../repositories/bookingRepository');
+const { getMonthBoundsUTC } = require('../utils/dateUtils');
 const AppError = require('../utils/AppError');
 
 class LockService {
@@ -22,12 +23,10 @@ class LockService {
     }
 
     // Check if any active (non-cancelled) bookings overlap this exact timeframe
-    const Booking = require('../models/Booking');
-    const overlappingBookings = await Booking.find({
+    const overlappingBookings = await bookingRepository.findOverlappingAll({
       vehicleId,
-      isCancelled: false,
-      startDateTime: { $lt: end },
-      endDateTime: { $gt: start },
+      startDateTime: start,
+      endDateTime: end,
     });
 
     if (overlappingBookings.length > 0) {
@@ -64,19 +63,7 @@ class LockService {
    * Get all locks for a vehicle in a given month (YYYY-MM format).
    */
   async getLocksForMonth(vehicleId, month) {
-    let monthStart, monthEnd;
-
-    if (month && typeof month === 'string' && month.includes('-')) {
-      const [yearStr, monthStr] = month.split('-');
-      const year = parseInt(yearStr, 10);
-      const monthNum = parseInt(monthStr, 10); // 1-12
-      monthStart = new Date(Date.UTC(year, monthNum - 1, 1, 0, 0, 0, 0));
-      monthEnd = new Date(Date.UTC(year, monthNum, 0, 23, 59, 59, 999));
-    } else {
-      const now = new Date();
-      monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0, 0));
-      monthEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0, 23, 59, 59, 999));
-    }
+    const { start: monthStart, end: monthEnd } = getMonthBoundsUTC(month);
 
     const locks = await lockRepository.findByVehicleDateRange(vehicleId, monthStart, monthEnd);
 

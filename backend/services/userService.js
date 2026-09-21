@@ -3,6 +3,7 @@ const userRepository = require('../repositories/userRepository');
 const vehicleRepository = require('../repositories/vehicleRepository');
 const bookingRepository = require('../repositories/bookingRepository');
 const walletRepository = require('../repositories/walletRepository');
+const { getMonthBoundsUTC } = require('../utils/dateUtils');
 const AppError = require('../utils/AppError');
 
 class UserService {
@@ -23,8 +24,7 @@ class UserService {
 
     const vehicleIds = vehicles.map((v) => v._id);
     const now = new Date();
-    const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0, 0));
-    const monthEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0, 23, 59, 59, 999));
+    const { start: monthStart, end: monthEnd } = getMonthBoundsUTC();
 
     // Execute single $facet aggregation on MongoDB to compute counts and bounded active/upcoming bookings
     const [{ totalMap, monthMap, activeAndUpcoming }, allWallets] = await Promise.all([

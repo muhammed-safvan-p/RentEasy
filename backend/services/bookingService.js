@@ -4,6 +4,7 @@ const walletRepository = require('../repositories/walletRepository');
 const walletService = require('./walletService');
 const lockRepository = require('../repositories/lockRepository');
 const { runInTransaction, isReplicaSet } = require('../utils/transactionRunner');
+const { roundCurrency } = require('../utils/currencyUtils');
 const AppError = require('../utils/AppError');
 
 class BookingService {
@@ -28,11 +29,34 @@ class BookingService {
     });
   }
 
+
   /**
-   * Calculates auto-suggested total amount (returns 0 as rate fields have been removed).
+   * Asserts whether the requesting user has permission to access or mutate bookings for this vehicle.
+   * Enforces vehicle ownership (or admin role) and blocked vehicle checks.
    */
-  calculateSuggestedAmount(vehicle, startDateTime, endDateTime) {
-    return 0;
+  assertVehicleAccess(vehicle, user, action = 'access') {
+    if (!vehicle) {
+      throw new AppError('Vehicle not found.', 404);
+    }
+    if (!user) {
+      return; // Permissive fallback if called without auth context (e.g. internal scripts)
+    }
+
+    const isOwner =
+      Array.isArray(vehicle.ownerIds) &&
+      vehicle.ownerIds.some((id) => id.toString() === user._id.toString());
+    const isAdmin = user.role === 'admin';
+
+    if (!isOwner && !isAdmin) {
+      throw new AppError(`Not authorized to ${action} this vehicle's bookings.`, 403);
+    }
+
+    if (!isAdmin && vehicle.isActive === false) {
+      throw new AppError(
+        'This vehicle is currently locked/blocked by administrator. Please contact support: +91 9496432072',
+        403
+      );
+    }
   }
 
   /**
@@ -43,7 +67,7 @@ class BookingService {
    *   rolling back tentative booking and retrying on concurrent collisions.
    * - On overlap detection or collision: returns HTTP 409 Conflict.
    */
-  async createBooking({ vehicleId, customerName, startDateTime, endDateTime, totalAmount, createdBy }) {
+  async createBooking({ vehicleId, customerName, startDateTime, endDateTime, totalAmount, createdBy, user }) {
     const start = new Date(startDateTime);
     const end = new Date(endDateTime);
 
@@ -52,18 +76,12 @@ class BookingService {
     }
 
     const vehicle = await vehicleRepository.findById(vehicleId);
-    if (!vehicle) {
-      throw new AppError('Vehicle not found.', 404);
-    }
-
-    if (!vehicle.isActive) {
-      throw new AppError('This vehicle is currently locked/blocked by administrator. Please contact support: +91 9496432072', 403);
-    }
+    this.assertVehicleAccess(vehicle, user, 'create bookings for');
 
     // Determine final totalAmount
     let finalTotalAmount = 0;
     if (totalAmount !== undefined && totalAmount !== null && totalAmount !== '') {
-      finalTotalAmount = Number(totalAmount);
+      finalTotalAmount = roundCurrency(totalAmount);
     }
 
     // Check if the requested date range falls within any locked period
@@ -188,7 +206,7 @@ class BookingService {
    * - Excludes the booking's own _id from overlap check.
    * - Atomically guards date/vehicle modifications against concurrent bookings.
    */
-  async updateBooking(id, updateData) {
+  async updateBooking(id, updateData, user) {
     const { customerName, startDateTime, endDateTime, totalAmount, vehicleId } = updateData;
 
     const booking = await bookingRepository.findById(id);
@@ -200,6 +218,9 @@ class BookingService {
       throw new AppError('Cannot edit a cancelled booking.', 400);
     }
 
+    const currentVehicle = await vehicleRepository.findById(booking.vehicleId);
+    this.assertVehicleAccess(currentVehicle, user, 'update');
+
     const targetVehicleId = vehicleId || booking.vehicleId;
     const newStart = startDateTime ? new Date(startDateTime) : booking.startDateTime;
     const newEnd = endDateTime ? new Date(endDateTime) : booking.endDateTime;
@@ -208,27 +229,17 @@ class BookingService {
       throw new AppError('endDateTime must be strictly after startDateTime.', 400);
     }
 
-    const currentVehicle = await vehicleRepository.findById(booking.vehicleId);
-    if (currentVehicle && !currentVehicle.isActive) {
-      throw new AppError('This vehicle is currently locked/blocked by administrator. Please contact support: +91 9496432072', 403);
-    }
-
     // Check if new vehicle is valid
     if (vehicleId && vehicleId.toString() !== booking.vehicleId.toString()) {
-      const vehicle = await vehicleRepository.findById(vehicleId);
-      if (!vehicle) {
-        throw new AppError('New vehicle not found.', 404);
-      }
-      if (!vehicle.isActive) {
-        throw new AppError('This vehicle is currently locked/blocked by administrator. Please contact support: +91 9496432072', 403);
-      }
+      const targetVehicle = await vehicleRepository.findById(vehicleId);
+      this.assertVehicleAccess(targetVehicle, user, 'transfer bookings to');
     }
 
     // Validate new total amount against already paid amount if provided
     let newTotalAmount = booking.totalAmount;
     let newBalanceAmount = booking.balanceAmount;
     if (totalAmount !== undefined && totalAmount !== null && totalAmount !== '') {
-      const numAmount = Number(totalAmount);
+      const numAmount = roundCurrency(totalAmount);
       if (numAmount < booking.paidAmount) {
         throw new AppError(
           `New total amount (${numAmount}) cannot be less than already paid amount (${booking.paidAmount}).`,
@@ -236,7 +247,7 @@ class BookingService {
         );
       }
       newTotalAmount = numAmount;
-      newBalanceAmount = newTotalAmount - booking.paidAmount;
+      newBalanceAmount = roundCurrency(newTotalAmount - booking.paidAmount);
     }
 
     // Check if dates or vehicle changed
@@ -370,7 +381,7 @@ class BookingService {
   /**
    * Cancels a booking and optionally records refund transaction.
    */
-  async cancelBooking(id, { refundAmount, refundPaymentMethod, cancellationNote, cancelledBy }) {
+  async cancelBooking(id, { refundAmount, refundPaymentMethod, cancellationNote, cancelledBy, user }) {
     const booking = await bookingRepository.findById(id);
     if (!booking) {
       throw new AppError('Booking not found.', 404);
@@ -381,14 +392,12 @@ class BookingService {
     }
 
     const vehicle = await vehicleRepository.findById(booking.vehicleId);
-    if (vehicle && !vehicle.isActive) {
-      throw new AppError('This vehicle is currently locked/blocked by administrator. Please contact support: +91 9496432072', 403);
-    }
+    this.assertVehicleAccess(vehicle, user, 'cancel');
 
     let parsedRefundAmount = 0;
     if (refundAmount !== undefined && refundAmount !== null && refundAmount !== '') {
-      parsedRefundAmount = Number(refundAmount);
-      const maxRefundable = (booking.paidAmount || 0) - (booking.refundedAmount || 0);
+      parsedRefundAmount = roundCurrency(refundAmount);
+      const maxRefundable = roundCurrency((booking.paidAmount || 0) - (booking.refundedAmount || 0));
       if (parsedRefundAmount > maxRefundable) {
         throw new AppError(
           `Refund amount (${parsedRefundAmount}) cannot exceed refundable balance (${maxRefundable}).`,
@@ -435,7 +444,7 @@ class BookingService {
           refundPaymentMethod,
           parsedRefundAmount
         );
-        booking.refundedAmount = (booking.refundedAmount || 0) + parsedRefundAmount;
+        booking.refundedAmount = roundCurrency((booking.refundedAmount || 0) + parsedRefundAmount);
       }
 
       booking.isCancelled = true;
@@ -464,8 +473,8 @@ class BookingService {
   /**
    * Records a payment against a booking.
    */
-  async recordPayment(id, { amount, paymentMethod, note, paidAt, recordedBy }) {
-    const numAmount = Number(amount);
+  async recordPayment(id, { amount, paymentMethod, note, paidAt, recordedBy, user }) {
+    const numAmount = roundCurrency(amount);
 
     const booking = await bookingRepository.findById(id);
     if (!booking) {
@@ -477,9 +486,7 @@ class BookingService {
     }
 
     const vehicle = await vehicleRepository.findById(booking.vehicleId);
-    if (vehicle && !vehicle.isActive) {
-      throw new AppError('This vehicle is currently locked/blocked by administrator. Please contact support: +91 9496432072', 403);
-    }
+    this.assertVehicleAccess(vehicle, user, 'record payments for');
 
     const paymentTimestamp = paidAt && !isNaN(new Date(paidAt).getTime()) ? new Date(paidAt) : new Date();
 
@@ -533,11 +540,11 @@ class BookingService {
       );
 
       // 4. Recompute Booking Paid, Total, and Balance Amounts
-      booking.paidAmount = (booking.paidAmount || 0) + numAmount;
+      booking.paidAmount = roundCurrency((booking.paidAmount || 0) + numAmount);
       if (booking.paidAmount > booking.totalAmount) {
         booking.totalAmount = booking.paidAmount;
       }
-      booking.balanceAmount = booking.totalAmount - booking.paidAmount;
+      booking.balanceAmount = roundCurrency(booking.totalAmount - booking.paidAmount);
       await bookingRepository.save(booking, session);
 
       return {
@@ -561,11 +568,14 @@ class BookingService {
   /**
    * Lists payments for a specific booking.
    */
-  async listPayments(bookingId) {
+  async listPayments(bookingId, user) {
     const booking = await bookingRepository.findById(bookingId);
     if (!booking) {
       throw new AppError('Booking not found.', 404);
     }
+
+    const vehicle = await vehicleRepository.findById(booking.vehicleId);
+    this.assertVehicleAccess(vehicle, user, 'view payments for');
 
     const payments = await bookingRepository.findPayments(
       { bookingId },
@@ -584,14 +594,28 @@ class BookingService {
 
   /**
    * Lists bookings matching filter criteria.
+   * Restricts non-admin users to bookings on vehicles they own (BOLA protection).
    */
-  async listBookings(queryParams) {
+  async listBookings(queryParams, user) {
     const { vehicleId, isCancelled, from, to, customerName, page = 1, limit = 50 } = queryParams;
 
     const filter = {};
 
-    if (vehicleId) {
-      filter.vehicleId = vehicleId;
+    // Authorization scoping (BOLA protection)
+    if (user && user.role !== 'admin') {
+      if (vehicleId) {
+        const vehicle = await vehicleRepository.findById(vehicleId);
+        this.assertVehicleAccess(vehicle, user, 'view');
+        filter.vehicleId = vehicleId;
+      } else {
+        const userVehicles = await vehicleRepository.findByOwnerId(user._id);
+        const ownedVehicleIds = userVehicles.map((v) => v._id);
+        filter.vehicleId = { $in: ownedVehicleIds };
+      }
+    } else {
+      if (vehicleId) {
+        filter.vehicleId = vehicleId;
+      }
     }
 
     if (isCancelled !== undefined && isCancelled !== '') {
@@ -611,12 +635,14 @@ class BookingService {
       }
     }
 
+    // ReDoS mitigation: Escape regex metacharacters in user-supplied search term
     if (customerName) {
-      filter.customerName = { $regex: customerName.trim(), $options: 'i' };
+      const escaped = customerName.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      filter.customerName = { $regex: escaped, $options: 'i' };
     }
 
     const pageNum = Math.max(1, parseInt(page, 10) || 1);
-    const limitNum = Math.max(1, Math.min(1000, parseInt(limit, 10) || 50));
+    const limitNum = Math.max(1, Math.min(100, parseInt(limit, 10) || 50));
     const skip = (pageNum - 1) * limitNum;
 
     const [totalCount, bookings] = await Promise.all([
@@ -648,13 +674,11 @@ class BookingService {
   /**
    * Returns calendar view of bookings for a vehicle.
    */
-  async getVehicleCalendar(vehicleId, queryParams) {
+  async getVehicleCalendar(vehicleId, queryParams, user) {
     const { from, to, includeCancelled } = queryParams;
 
     const vehicle = await vehicleRepository.findById(vehicleId);
-    if (!vehicle) {
-      throw new AppError('Vehicle not found.', 404);
-    }
+    this.assertVehicleAccess(vehicle, user, 'view calendar for');
 
     const filter = { vehicleId };
 
@@ -723,16 +747,16 @@ class BookingService {
    */
   async recomputeBookingTotals(bookingId, session = null) {
     const payments = await bookingRepository.findPaymentsByBookingId(bookingId, session);
-    const paidAmount = payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+    const paidAmount = payments.reduce((sum, p) => roundCurrency(sum + (Number(p.amount) || 0)), 0);
 
     const booking = await bookingRepository.findById(bookingId, null, session);
 
     if (booking) {
-      booking.paidAmount = paidAmount;
+      booking.paidAmount = roundCurrency(paidAmount);
       if (booking.paidAmount > booking.totalAmount) {
         booking.totalAmount = booking.paidAmount;
       }
-      booking.balanceAmount = booking.totalAmount - paidAmount;
+      booking.balanceAmount = roundCurrency(booking.totalAmount - paidAmount);
       await bookingRepository.save(booking, session);
     }
 
