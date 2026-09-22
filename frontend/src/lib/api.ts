@@ -11,6 +11,49 @@ export interface ApiError extends Error {
 }
 
 /**
+ * Safely retrieves the authentication token from localStorage or document.cookie.
+ * Essential for mobile browsers (iOS Safari, mobile Chrome) where cross-site cookies are blocked.
+ */
+export function getAuthToken(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const local = localStorage.getItem("token");
+    if (local) return local;
+  } catch {
+    // localStorage might be blocked in some private browsing configurations
+  }
+  const match = document.cookie.match(/(?:^|;\s*)token=([^;]+)/);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+/**
+ * Persists the authentication token in both localStorage and document.cookie.
+ */
+export function setAuthToken(token: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem("token", token);
+  } catch {
+    // ignore
+  }
+  const isSecure = window.location.protocol === "https:";
+  document.cookie = `token=${token}; path=/; max-age=${30 * 24 * 60 * 60}; SameSite=Lax${isSecure ? "; Secure" : ""}`;
+}
+
+/**
+ * Clears the authentication token from both localStorage and document.cookie.
+ */
+export function clearAuthToken(): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.removeItem("token");
+  } catch {
+    // ignore
+  }
+  document.cookie = "token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+}
+
+/**
  * Centralized API request wrapper with default credentials,
  * automatic JSON headers, 403 blocked user detection, and typed ApiError.
  */
@@ -25,6 +68,12 @@ export async function apiRequest<T = unknown>(
   const headers: Record<string, string> = {};
   if (!(options.body instanceof FormData)) {
     headers["Content-Type"] = "application/json";
+  }
+
+  // Mobile & Cross-Domain Compatibility: Attach Authorization header if token exists
+  const token = getAuthToken();
+  if (token && !(options.headers && "Authorization" in (options.headers as Record<string, string>))) {
+    headers["Authorization"] = `Bearer ${token}`;
   }
 
   const res = await fetch(fullUrl, {

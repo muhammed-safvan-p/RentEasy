@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Home, Users, Car, LogOut } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, clearAuthToken } from "@/lib/api";
 import { logger } from "@/lib/logger";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -19,6 +19,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const handleLogout = async () => {
     try {
       await api.post("/api/auth/logout");
+      clearAuthToken();
       router.push("/login");
       router.refresh();
     } catch (err: unknown) {

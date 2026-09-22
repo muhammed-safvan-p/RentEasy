@@ -4,7 +4,7 @@ import { useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { ShieldAlert, PhoneCall, AlertCircle, Eye, EyeOff } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, setAuthToken } from "@/lib/api";
 
 function LoginForm() {
   const router = useRouter();
@@ -30,10 +30,9 @@ function LoginForm() {
         password,
       });
 
-      // Dual-layer session cookie sync for first-party edge middleware compatibility
+      // Dual-layer session token persistence (localStorage + cookie) for cross-domain and mobile support
       if (data.token) {
-        const isSecure = window.location.protocol === "https:";
-        document.cookie = `token=${data.token}; path=/; max-age=${30 * 24 * 60 * 60}; SameSite=Lax${isSecure ? "; Secure" : ""}`;
+        setAuthToken(data.token);
       }
 
       if (data.role === "admin") {

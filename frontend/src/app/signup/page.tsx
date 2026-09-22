@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { api } from "@/lib/api";
+import { api, setAuthToken } from "@/lib/api";
 
 function validateUsername(value: string): string {
   if (!value) return "";
@@ -62,10 +62,9 @@ export default function SignupPage() {
         password,
       });
 
-      // Dual-layer session cookie sync for first-party edge middleware compatibility
+      // Dual-layer session token persistence (localStorage + cookie) for cross-domain and mobile support
       if (data.token) {
-        const isSecure = window.location.protocol === "https:";
-        document.cookie = `token=${data.token}; path=/; max-age=${30 * 24 * 60 * 60}; SameSite=Lax${isSecure ? "; Secure" : ""}`;
+        setAuthToken(data.token);
       }
 
       router.push("/dashboard");

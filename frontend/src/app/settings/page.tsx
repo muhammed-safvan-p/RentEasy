@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, CheckCircle2, Copy, LogOut, Loader2 } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, clearAuthToken } from "@/lib/api";
 import { logger } from "@/lib/logger";
 
 export default function SettingsPage() {
@@ -55,8 +55,8 @@ export default function SettingsPage() {
     setIsLoggingOut(true);
     try {
       await api.post("/api/auth/logout");
-      // Clear client session cookie
-      document.cookie = "token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+      // Clear client session token (localStorage + cookie)
+      clearAuthToken();
       router.replace("/login");
       router.refresh();
     } catch (error: unknown) {
