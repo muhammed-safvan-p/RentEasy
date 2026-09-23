@@ -1,23 +1,21 @@
-# RentEasy Backend
+# RentEase 🚗🏍️
 
-This is the backend for the RentEasy project, built with Node.js, Express, and MongoDB.
+RentEase is a simple vehicle rental booking system for managing car and bike rentals — built to track bookings, payments, and vehicle availability without the overhead of a full commercial rental platform.
 
-## Prerequisites
+Built as a free project for a friend's rental business.
 
-- Node.js installed
-- MongoDB running locally or a MongoDB Atlas connection string
+**Live:** https://rent-easy-v1.vercel.app
 
-## Setup Instructions
+## What it does
 
-1. Clone the repository.
-2. Run `npm install` to install dependencies.
-3. Create a `.env` file in the root directory (you can copy from `.env.example` if it exists) and add the following:
-   ```env
-   PORT=5000
-   MONGODB_URI=mongodb://localhost:27017/renteasy
-   ```
-4. Start the development server using `node server.js` (or use `nodemon` if you have it installed).
+- Books out vehicles (cars, bikes) individually, preventing double-bookings
+- Tracks payments flexibly — partial/advance payments, no rigid booking status
+- Lets vehicle owners lock out specific dates from being booked
+- Keeps a per-vehicle dealer list for quick booking entry
 
-## API Endpoints
+## Tech Stack
 
-- `GET /api/health` - Basic health check. Returns `{ "status": "ok" }`.
+- **Backend:** Node.js + Mongoose
+- **Database:** MongoDB Atlas
+- **Frontend:** Next.js
+- **Hosting:** Backend on Render, Frontend on Vercel
