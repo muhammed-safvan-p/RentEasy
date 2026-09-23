@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import {
@@ -46,6 +46,7 @@ import {
   CalendarX2,
 } from "lucide-react";
 import { api } from "@/lib/api";
+import { logger } from "@/lib/logger";
 import {
   formatCurrency,
   formatDateNice,
@@ -65,12 +66,14 @@ import {
   Dealer,
   OperationalNote,
 } from "@/types";
+import { EditVehicleModal } from "@/components/admin/vehicles/EditVehicleModal";
 
 type TabKey = "overview" | "bookings" | "financials" | "locks" | "notes" | "dealers";
 
 export default function AdminVehicleDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   // Core Data States
   const [vehicle, setVehicle] = useState<Vehicle | null>(null);
@@ -88,6 +91,24 @@ export default function AdminVehicleDetailPage() {
   const [error, setError] = useState("");
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [togglingActive, setTogglingActive] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+
+  // Auto-open Edit Modal if navigated via ?edit=true deep link
+  useEffect(() => {
+    if (searchParams?.get("edit") === "true") {
+      setIsEditModalOpen(true);
+    }
+  }, [searchParams]);
+
+  // Clean URL query when closing edit modal
+  const handleCloseEditModal = () => {
+    setIsEditModalOpen(false);
+    if (typeof window !== "undefined" && window.location.search.includes("edit=")) {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("edit");
+      window.history.replaceState({}, "", url.pathname + (url.search ? url.search : ""));
+    }
+  };
 
   // Month & Period Selection (null = All Time / Full History)
   const [selectedMonth, setSelectedMonth] = useState<Date | null>(null);
@@ -167,18 +188,26 @@ export default function AdminVehicleDetailPage() {
       }
       if (txRes.status === "fulfilled") {
         setTransactions(txRes.value.transactions || []);
+      } else {
+        logger.error("Failed to load wallet transactions:", txRes.reason);
       }
       if (bookingsRes.status === "fulfilled") {
         const val = bookingsRes.value;
         setBookings(Array.isArray(val) ? val : val.bookings || []);
+      } else {
+        logger.error("Failed to load bookings:", bookingsRes.reason);
       }
       if (locksRes.status === "fulfilled") {
         const val = locksRes.value;
         setLocks("locks" in val && Array.isArray(val.locks) ? val.locks : (Array.isArray(val) ? val : []));
+      } else {
+        logger.error("Failed to load vehicle locks:", locksRes.reason);
       }
       if (dealersRes.status === "fulfilled") {
         const val = dealersRes.value;
         setDealers(Array.isArray(val) ? val : ("dealers" in val && Array.isArray(val.dealers) ? val.dealers : []));
+      } else {
+        logger.error("Failed to load dealers:", dealersRes.reason);
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Error loading vehicle data");
@@ -517,6 +546,17 @@ export default function AdminVehicleDetailPage() {
       if (txFilter === "cash") return tx.paymentMethod === "cash";
       if (txFilter === "bank") return tx.paymentMethod === "bank";
       return true;
+    }).sort((a, b) => {
+      const dayA = (a.transactionDate || a.createdAt || "").split("T")[0];
+      const dayB = (b.transactionDate || b.createdAt || "").split("T")[0];
+      if (dayA && dayB && dayA !== dayB) return dayB.localeCompare(dayA);
+      const createdA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const createdB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      if (createdA && createdB && createdA !== createdB) return createdB - createdA;
+      const dateA = a.transactionDate ? new Date(a.transactionDate).getTime() : 0;
+      const dateB = b.transactionDate ? new Date(b.transactionDate).getTime() : 0;
+      if (dateA !== dateB) return dateB - dateA;
+      return (b._id || "").localeCompare(a._id || "");
     });
   }, [transactions, selectedMonth, txFromDate, txToDate, txSearch, txFilter]);
 
@@ -731,13 +771,13 @@ export default function AdminVehicleDetailPage() {
             Public Garage View
           </Link>
 
-          <Link
-            href={`/admin/vehicles/${vehicle._id}/edit`}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 transition-all shadow-sm shadow-indigo-600/20"
+          <button
+            onClick={() => setIsEditModalOpen(true)}
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 transition-all shadow-sm shadow-indigo-600/20 cursor-pointer"
           >
             <Edit className="w-3.5 h-3.5" />
             Edit Vehicle
-          </Link>
+          </button>
         </div>
       </div>
 
@@ -1249,13 +1289,14 @@ export default function AdminVehicleDetailPage() {
                 </div>
                 <h3 className="text-base font-bold text-slate-900">Vehicle Specifications & Profile</h3>
               </div>
-              <Link
-                href={`/admin/vehicles/${vehicle._id}/edit`}
-                className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 flex items-center gap-1"
+              <button
+                type="button"
+                onClick={() => setIsEditModalOpen(true)}
+                className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 cursor-pointer transition-colors"
               >
                 <Edit className="w-3.5 h-3.5" />
                 Edit Specs
-              </Link>
+              </button>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
@@ -1311,33 +1352,37 @@ export default function AdminVehicleDetailPage() {
 
               <div className="space-y-3">
                 {vehicle.ownerIds && vehicle.ownerIds.length > 0 ? (
-                  vehicle.ownerIds.map((owner) => (
-                    <div
-                      key={owner._id}
-                      className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm shadow-sm">
-                          {owner.username ? owner.username.charAt(0).toUpperCase() : "U"}
-                        </div>
-                        <div>
-                          <p className="text-sm font-bold text-slate-800">{owner.username}</p>
-                          <p className="text-[11px] font-mono text-slate-400">ID: {owner._id}</p>
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => handleCopy(owner._id, `owner-${owner._id}`)}
-                        className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-200 rounded-lg transition-colors"
-                        title="Copy User ID"
+                  vehicle.ownerIds.map((owner) => {
+                    const ownerId = typeof owner === "object" && owner?._id ? owner._id : String(owner);
+                    const username = typeof owner === "object" && owner?.username ? owner.username : "Owner";
+                    return (
+                      <div
+                        key={ownerId}
+                        className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between"
                       >
-                        {copiedField === `owner-${owner._id}` ? (
-                          <Check className="w-4 h-4 text-emerald-600" />
-                        ) : (
-                          <Copy className="w-4 h-4" />
-                        )}
-                      </button>
-                    </div>
-                  ))
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm shadow-sm">
+                            {username.charAt(0).toUpperCase()}
+                          </div>
+                          <div>
+                            <p className="text-sm font-bold text-slate-800">{username}</p>
+                            <p className="text-[11px] font-mono text-slate-400">ID: {ownerId}</p>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => handleCopy(ownerId, `owner-${ownerId}`)}
+                          className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-200 rounded-lg transition-colors"
+                          title="Copy User ID"
+                        >
+                          {copiedField === `owner-${ownerId}` ? (
+                            <Check className="w-4 h-4 text-emerald-600" />
+                          ) : (
+                            <Copy className="w-4 h-4" />
+                          )}
+                        </button>
+                      </div>
+                    );
+                  })
                 ) : (
                   <div className="text-center py-8 border-2 border-dashed border-slate-200 rounded-2xl">
                     <User className="w-8 h-8 text-slate-300 mx-auto mb-2" />
@@ -2330,6 +2375,18 @@ export default function AdminVehicleDetailPage() {
           </div>
         </div>
       )}
+
+      {/* Modern In-place Vehicle Edit Modal */}
+      <EditVehicleModal
+        isOpen={isEditModalOpen}
+        onClose={handleCloseEditModal}
+        vehicle={vehicle}
+        onSuccess={(updatedVehicle) => {
+          setVehicle(updatedVehicle);
+          handleCloseEditModal();
+          loadAllData();
+        }}
+      />
     </div>
   );
 }

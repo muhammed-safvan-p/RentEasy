@@ -33,35 +33,11 @@ import { api } from "@/lib/api";
 import { formatDateNice } from "@/lib/formatters";
 import { logger } from "@/lib/logger";
 import { ErrorBanner } from "@/components/common/ErrorBanner";
-
-interface Owner {
-  _id: string;
-  username: string;
-}
-
-interface VehicleData {
-  _id: string;
-  name: string;
-  plateNumber: string;
-  isActive: boolean;
-  ownerIds: Owner[];
-  notes?: string;
-  imageUrl?: string | null;
-  fuelType?: "Petrol" | "Diesel" | "Electric" | "Hybrid" | "CNG" | string;
-  transmission?: "Manual" | "Automatic" | string;
-  seatingCapacity?: number;
-  createdAt: string;
-  updatedAt?: string;
-}
-
-interface UserListItem {
-  _id: string;
-  username: string;
-}
+import { Vehicle } from "@/types";
+import { EditVehicleModal } from "@/components/admin/vehicles/EditVehicleModal";
 
 export default function AdminVehiclesPage() {
-  const [vehicles, setVehicles] = useState<VehicleData[]>([]);
-  const [usersList, setUsersList] = useState<UserListItem[]>([]);
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
@@ -81,26 +57,17 @@ export default function AdminVehiclesPage() {
   const [togglingId, setTogglingId] = useState<string | null>(null);
 
   // Edit Modal State
-  const [editingVehicle, setEditingVehicle] = useState<VehicleData | null>(null);
-  const [editName, setEditName] = useState("");
-  const [editPlateNumber, setEditPlateNumber] = useState("");
-  const [editFuelType, setEditFuelType] = useState("Diesel");
-  const [editTransmission, setEditTransmission] = useState("Manual");
-  const [editSeatingCapacity, setEditSeatingCapacity] = useState(5);
-  const [editNotes, setEditNotes] = useState("");
-  const [editSelectedOwnerIds, setEditSelectedOwnerIds] = useState<string[]>([]);
-  const [submittingEdit, setSubmittingEdit] = useState(false);
-  const [editError, setEditError] = useState("");
+  const [editingVehicle, setEditingVehicle] = useState<Vehicle | null>(null);
 
   // Delete Modal State
-  const [deletingVehicle, setDeletingVehicle] = useState<VehicleData | null>(null);
+  const [deletingVehicle, setDeletingVehicle] = useState<Vehicle | null>(null);
   const [submittingDelete, setSubmittingDelete] = useState(false);
   const [deleteError, setDeleteError] = useState("");
 
   // Fetch Vehicles
   const fetchVehicles = useCallback(async () => {
     try {
-      const data = await api.get<VehicleData[]>("/api/admin/vehicles");
+      const data = await api.get<Vehicle[]>("/api/admin/vehicles");
       setVehicles(Array.isArray(data) ? data : []);
       setError("");
     } catch (err: unknown) {
@@ -111,23 +78,12 @@ export default function AdminVehiclesPage() {
     }
   }, []);
 
-  // Fetch Users List for assignment
-  const fetchUsersList = useCallback(async () => {
-    try {
-      const data = await api.get<UserListItem[]>("/api/admin/users/list");
-      setUsersList(Array.isArray(data) ? data : []);
-    } catch (err: unknown) {
-      logger.error("Failed to load users list", err);
-    }
-  }, []);
-
   useEffect(() => {
     const timer = setTimeout(() => {
       fetchVehicles();
-      fetchUsersList();
     }, 0);
     return () => clearTimeout(timer);
-  }, [fetchVehicles, fetchUsersList]);
+  }, [fetchVehicles]);
 
   // Copy helper
   const handleCopyPlate = (plate: string) => {
@@ -137,7 +93,7 @@ export default function AdminVehiclesPage() {
   };
 
   // Toggle Active Status
-  const handleToggleActive = async (vehicle: VehicleData) => {
+  const handleToggleActive = async (vehicle: Vehicle) => {
     setTogglingId(vehicle._id);
     setError("");
     try {
@@ -153,50 +109,8 @@ export default function AdminVehiclesPage() {
   };
 
   // Open Edit Modal
-  const openEditModal = (vehicle: VehicleData) => {
+  const openEditModal = (vehicle: Vehicle) => {
     setEditingVehicle(vehicle);
-    setEditName(vehicle.name || "");
-    setEditPlateNumber(vehicle.plateNumber || "");
-    setEditFuelType(vehicle.fuelType || "Diesel");
-    setEditTransmission(vehicle.transmission || "Manual");
-    setEditSeatingCapacity(vehicle.seatingCapacity || 5);
-    setEditNotes(vehicle.notes || "");
-    setEditSelectedOwnerIds(vehicle.ownerIds?.map((o) => o._id) || []);
-    setEditError("");
-  };
-
-  // Submit Edit
-  const handleEditSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingVehicle) return;
-
-    if (!editName.trim() || !editPlateNumber.trim()) {
-      setEditError("Vehicle name and plate number are required");
-      return;
-    }
-
-    setSubmittingEdit(true);
-    setEditError("");
-
-    try {
-      const payload = {
-        name: editName.trim(),
-        plateNumber: editPlateNumber.trim().toUpperCase(),
-        fuelType: editFuelType,
-        transmission: editTransmission,
-        seatingCapacity: Number(editSeatingCapacity),
-        notes: editNotes.trim(),
-        ownerIds: editSelectedOwnerIds,
-      };
-
-      await api.put(`/api/admin/vehicles/${editingVehicle._id}`, payload);
-      setEditingVehicle(null);
-      await fetchVehicles();
-    } catch (err: unknown) {
-      setEditError(err instanceof Error ? err.message : "Update failed");
-    } finally {
-      setSubmittingEdit(false);
-    }
   };
 
   // Submit Delete
@@ -214,13 +128,6 @@ export default function AdminVehiclesPage() {
     } finally {
       setSubmittingDelete(false);
     }
-  };
-
-  // Toggle owner selection in edit modal
-  const toggleOwnerSelection = (userId: string) => {
-    setEditSelectedOwnerIds((prev) =>
-      prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]
-    );
   };
 
   // Filter and Search Logic
@@ -425,7 +332,6 @@ export default function AdminVehiclesPage() {
             setLoading(true);
             setError("");
             fetchVehicles();
-            fetchUsersList();
           }}
           onDismiss={() => setError("")}
           className="mb-0"
@@ -611,7 +517,6 @@ export default function AdminVehiclesPage() {
                           setLoading(true);
                           setError("");
                           fetchVehicles();
-                          fetchUsersList();
                         }}
                         className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-all shadow-sm cursor-pointer"
                       >
@@ -889,200 +794,16 @@ export default function AdminVehiclesPage() {
         )}
       </div>
 
-      {/* QUICK EDIT VEHICLE MODAL */}
-      {editingVehicle && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in">
-          <div className="bg-white rounded-2xl max-w-xl w-full p-6 shadow-2xl border border-slate-200 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between pb-4 border-b border-slate-100">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
-                  <Edit className="w-4.5 h-4.5" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-bold text-slate-900">Edit Vehicle</h3>
-                  <p className="text-xs text-slate-500">
-                    Updating details for {editingVehicle.name} ({editingVehicle.plateNumber})
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() => setEditingVehicle(null)}
-                className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {editError && (
-              <div className="mt-4 p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-start gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                <span>{editError}</span>
-              </div>
-            )}
-
-            <form onSubmit={handleEditSubmit} className="mt-5 space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {/* Name */}
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                    Vehicle Name <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={editName}
-                    onChange={(e) => setEditName(e.target.value)}
-                    placeholder="e.g. Maruti Suzuki Swift"
-                    className="w-full px-3.5 py-2 text-sm border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
-                  />
-                </div>
-
-                {/* Plate Number */}
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                    Plate Number <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={editPlateNumber}
-                    onChange={(e) => setEditPlateNumber(e.target.value.toUpperCase())}
-                    placeholder="e.g. KL-10-AZ-1234"
-                    className="w-full px-3.5 py-2 text-sm font-mono uppercase border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
-                  />
-                </div>
-              </div>
-
-              {/* Fuel, Transmission, Seats */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                    Fuel Type
-                  </label>
-                  <select
-                    value={editFuelType}
-                    onChange={(e) => setEditFuelType(e.target.value)}
-                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                  >
-                    <option value="Diesel">Diesel</option>
-                    <option value="Petrol">Petrol</option>
-                    <option value="Electric">Electric</option>
-                    <option value="Hybrid">Hybrid</option>
-                    <option value="CNG">CNG</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                    Transmission
-                  </label>
-                  <select
-                    value={editTransmission}
-                    onChange={(e) => setEditTransmission(e.target.value)}
-                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                  >
-                    <option value="Manual">Manual</option>
-                    <option value="Automatic">Automatic</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                    Seats
-                  </label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={50}
-                    value={editSeatingCapacity}
-                    onChange={(e) => setEditSeatingCapacity(Number(e.target.value))}
-                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                  />
-                </div>
-              </div>
-
-              {/* Notes */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                  Internal Notes
-                </label>
-                <textarea
-                  rows={2}
-                  value={editNotes}
-                  onChange={(e) => setEditNotes(e.target.value)}
-                  placeholder="Optional operational or maintenance notes..."
-                  className="w-full px-3.5 py-2 text-sm border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 resize-none"
-                />
-              </div>
-
-              {/* Assigned Co-Owners */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                  Assigned Co-Owners ({editSelectedOwnerIds.length} selected)
-                </label>
-                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl max-h-36 overflow-y-auto space-y-1.5">
-                  {usersList.length === 0 ? (
-                    <p className="text-xs text-slate-400">No users found to assign.</p>
-                  ) : (
-                    usersList.map((user) => {
-                      const isSelected = editSelectedOwnerIds.includes(user._id);
-                      return (
-                        <label
-                          key={user._id}
-                          onClick={() => toggleOwnerSelection(user._id)}
-                          className={`flex items-center justify-between px-3 py-2 rounded-lg cursor-pointer text-xs font-medium transition-colors ${
-                            isSelected
-                              ? "bg-indigo-50 text-indigo-900 border border-indigo-200"
-                              : "bg-white text-slate-700 border border-slate-200/80 hover:bg-slate-100"
-                          }`}
-                        >
-                          <span className="flex items-center gap-2">
-                            <span className="w-5 h-5 rounded-full bg-slate-200 text-slate-700 text-[10px] font-bold flex items-center justify-center">
-                              {user.username.charAt(0).toUpperCase()}
-                            </span>
-                            <span>{user.username}</span>
-                          </span>
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={() => {}}
-                            className="rounded text-indigo-600 focus:ring-indigo-500"
-                          />
-                        </label>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="flex items-center justify-end gap-2.5 pt-4 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setEditingVehicle(null)}
-                  className="px-4 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={submittingEdit}
-                  className="inline-flex items-center gap-2 px-5 py-2 text-xs font-semibold text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 active:scale-95 disabled:opacity-50 transition-all shadow-sm shadow-indigo-200"
-                >
-                  {submittingEdit ? (
-                    <>
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      <span>Saving...</span>
-                    </>
-                  ) : (
-                    <span>Save Changes</span>
-                  )}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      {/* UNIFIED EDIT VEHICLE MODAL */}
+      <EditVehicleModal
+        isOpen={!!editingVehicle}
+        onClose={() => setEditingVehicle(null)}
+        vehicle={editingVehicle}
+        onSuccess={async () => {
+          setEditingVehicle(null);
+          await fetchVehicles();
+        }}
+      />
 
       {/* DELETE VEHICLE CONFIRMATION MODAL */}
       {deletingVehicle && (
