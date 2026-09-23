@@ -200,17 +200,19 @@ class AdminService {
       );
     }
 
-    // Cascade delete vehicle and all associated records atomically in a transaction
+    // Cascade delete vehicle and all associated records atomically in a transaction.
+    // Operations run sequentially (not Promise.all) because a MongoDB ClientSession
+    // is single-threaded — parallel operations on the same session cause a
+    // "transaction number collision" error. Child documents are deleted first,
+    // the vehicle document itself is deleted last.
     await runInTransaction(async (session) => {
-      await Promise.all([
-        vehicleRepository.deleteById(id, session),
-        dealerRepository.deleteManyByVehicleId(id, session),
-        lockRepository.deleteManyByVehicleId(id, session),
-        walletRepository.deleteByVehicleId(id, session),
-        walletRepository.deleteTransactionsByVehicleId(id, session),
-        bookingRepository.deletePaymentsByVehicleId(id, session),
-        bookingRepository.deleteManyByVehicleId(id, session),
-      ]);
+      await dealerRepository.deleteManyByVehicleId(id, session);
+      await lockRepository.deleteManyByVehicleId(id, session);
+      await walletRepository.deleteTransactionsByVehicleId(id, session);
+      await walletRepository.deleteByVehicleId(id, session);
+      await bookingRepository.deletePaymentsByVehicleId(id, session);
+      await bookingRepository.deleteManyByVehicleId(id, session);
+      await vehicleRepository.deleteById(id, session); // vehicle deleted last
     });
 
     return { message: 'Vehicle deleted successfully' };
