@@ -319,5 +319,32 @@ body:has(.admin-layout) .app-shell {
     box-shadow: 0 0 12px rgba(244, 63, 94, 0.6) !important;
     transform: scale(1.08);
   }
+
+  /* Active Selected Date (Free / Available Date) */
+  .renteasy-calendar .rdp-selected-date .rdp-day_button {
+    background: #6366f1 !important;
+    color: #ffffff !important;
+    font-weight: 700 !important;
+    border: 2px solid #a5b4fc !important;
+    box-shadow: 0 0 14px rgba(99, 102, 241, 0.7), 0 2px 6px rgba(0, 0, 0, 0.4) !important;
+    transform: scale(1.1);
+  }
+
+  .renteasy-calendar .rdp-selected-date .rdp-day_button:hover {
+    background: #4f46e5 !important;
+    color: #ffffff !important;
+    transform: scale(1.12);
+  }
+
+  /* Active Selected Lock Range */
+  .renteasy-calendar .rdp-selected-lock .rdp-day_button {
+    background: rgba(245, 158, 11, 0.45) !important;
+    color: #ffffff !important;
+    font-weight: 700 !important;
+    border: 2px solid #fde68a !important;
+    box-shadow: 0 0 12px rgba(245, 158, 11, 0.6) !important;
+    transform: scale(1.08);
+  }
 }
+
 

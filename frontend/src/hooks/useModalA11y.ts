@@ -15,6 +15,10 @@ interface UseModalA11yOptions {
  */
 export function useModalA11y({ isOpen, onClose, initialFocusRef }: UseModalA11yOptions) {
   const modalRef = useRef<HTMLDivElement | null>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const initialFocusRefRef = useRef(initialFocusRef);
+  initialFocusRefRef.current = initialFocusRef;
 
   useEffect(() => {
     if (!isOpen) return;
@@ -22,10 +26,20 @@ export function useModalA11y({ isOpen, onClose, initialFocusRef }: UseModalA11yO
     // Save previous active element to restore focus on unmount
     const previouslyFocusedElement = document.activeElement as HTMLElement | null;
 
-    // Focus the initial element or the first focusable element
+    // Focus the initial element or the first focusable element ONLY when opening
     const timer = setTimeout(() => {
-      if (initialFocusRef?.current) {
-        initialFocusRef.current.focus();
+      // Do not steal focus if an input/element inside the modal is already focused
+      if (
+        modalRef.current &&
+        document.activeElement &&
+        modalRef.current.contains(document.activeElement) &&
+        document.activeElement !== document.body
+      ) {
+        return;
+      }
+
+      if (initialFocusRefRef.current?.current) {
+        initialFocusRefRef.current.current.focus();
       } else if (modalRef.current) {
         const focusableElements = modalRef.current.querySelectorAll<HTMLElement>(
           'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
@@ -44,7 +58,7 @@ export function useModalA11y({ isOpen, onClose, initialFocusRef }: UseModalA11yO
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.stopPropagation();
-        onClose();
+        onCloseRef.current();
         return;
       }
 
@@ -84,7 +98,7 @@ export function useModalA11y({ isOpen, onClose, initialFocusRef }: UseModalA11yO
         previouslyFocusedElement.focus();
       }
     };
-  }, [isOpen, onClose, initialFocusRef]);
+  }, [isOpen]);
 
   return modalRef;
 }

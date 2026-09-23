@@ -11,6 +11,8 @@ interface VehicleCalendarViewProps {
   bookedDays: Date[];
   lockedDays: Date[];
   selectedBookingDays: Date[];
+  selectedDate?: Date | null;
+  selectedLockDays?: Date[];
   onDayClick: (day: Date) => void;
   calendarLoading: boolean;
 }
@@ -21,6 +23,8 @@ export const VehicleCalendarView: React.FC<VehicleCalendarViewProps> = ({
   bookedDays,
   lockedDays,
   selectedBookingDays,
+  selectedDate,
+  selectedLockDays,
   onDayClick,
   calendarLoading,
 }) => {
@@ -48,8 +52,20 @@ export const VehicleCalendarView: React.FC<VehicleCalendarViewProps> = ({
           className="renteasy-calendar"
           month={currentMonth}
           onMonthChange={onMonthChange}
-          modifiers={{ booked: bookedDays, locked: lockedDays, selectedBooking: selectedBookingDays }}
-          modifiersClassNames={{ booked: "rdp-booked", locked: "rdp-locked", selectedBooking: "rdp-selected-booking" }}
+          modifiers={{
+            booked: bookedDays,
+            locked: lockedDays,
+            selectedBooking: selectedBookingDays,
+            selectedDate: selectedDate ? [selectedDate] : [],
+            selectedLock: selectedLockDays || [],
+          }}
+          modifiersClassNames={{
+            booked: "rdp-booked",
+            locked: "rdp-locked",
+            selectedBooking: "rdp-selected-booking",
+            selectedDate: "rdp-selected-date",
+            selectedLock: "rdp-selected-lock",
+          }}
           onDayClick={onDayClick}
         />
       </div>

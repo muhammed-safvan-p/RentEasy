@@ -221,8 +221,39 @@ export default function VehicleDetailPage() {
     return dates;
   }, [selectedBookings]);
 
+  // Expand the currently selected lock into days to highlight on the calendar
+  const selectedLockDays = useMemo(() => {
+    if (!selectedLock || !selectedLock.startDate || !selectedLock.endDate) return [];
+    try {
+      const sStr = new Date(selectedLock.startDate).toISOString().slice(0, 10);
+      const eStr = new Date(selectedLock.endDate).toISOString().slice(0, 10);
+      const [sY, sM, sD] = sStr.split("-").map(Number);
+      const [eY, eM, eD] = eStr.split("-").map(Number);
+      const dates: Date[] = [];
+      const cur = new Date(sY, sM - 1, sD, 12, 0, 0, 0);
+      const finalEnd = new Date(eY, eM - 1, eD, 12, 0, 0, 0);
+      while (cur <= finalEnd) {
+        dates.push(new Date(cur));
+        cur.setDate(cur.getDate() + 1);
+      }
+      return dates;
+    } catch {
+      return [];
+    }
+  }, [selectedLock]);
+
   // When a day on the calendar is clicked
   const handleDayClick = (day: Date) => {
+    if (
+      selectedDate &&
+      selectedDate.getFullYear() === day.getFullYear() &&
+      selectedDate.getMonth() === day.getMonth() &&
+      selectedDate.getDate() === day.getDate()
+    ) {
+      clearSelections();
+      return;
+    }
+
     clearSelections();
     const dayStart = new Date(day.getFullYear(), day.getMonth(), day.getDate(), 0, 0, 0, 0);
     const dayEnd = new Date(day.getFullYear(), day.getMonth(), day.getDate(), 23, 59, 59, 999);
@@ -359,7 +390,9 @@ export default function VehicleDetailPage() {
         {
           amount: numAmount,
           paymentMethod: partMethod,
-          note: partNote.trim() || `Part-payment via ${partMethod}`,
+          note:
+            partNote.trim() ||
+            `Booking payment • ${activeModalBooking.customerName || "Customer"}`,
         }
       );
 
@@ -650,6 +683,8 @@ export default function VehicleDetailPage() {
               bookedDays={bookedDays}
               lockedDays={lockedDays}
               selectedBookingDays={selectedBookingDays}
+              selectedDate={selectedDate}
+              selectedLockDays={selectedLockDays}
               onDayClick={handleDayClick}
               calendarLoading={calendarLoading}
             />

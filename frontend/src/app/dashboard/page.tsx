@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import {
   Car,
   AlertCircle,
@@ -24,6 +25,54 @@ import { useCurrentUser, useUserVehicles, GarageVehicle } from "@/hooks/useVehic
 import { formatCurrency } from "@/lib/formatters";
 import { ApiError } from "@/lib/api";
 import { logger } from "@/lib/logger";
+
+function VehicleThumbnail({
+  imageUrl,
+  name,
+  isBlocked,
+  isBooked,
+}: {
+  imageUrl?: string | null;
+  name: string;
+  isBlocked?: boolean;
+  isBooked?: boolean;
+}) {
+  const [imageError, setImageError] = useState(false);
+
+  const containerClasses = `w-12 h-12 rounded-2xl flex items-center justify-center border transition-colors shrink-0 overflow-hidden relative ${
+    isBlocked
+      ? "bg-rose-500/15 text-rose-400 border-rose-500/30"
+      : isBooked
+      ? "bg-amber-500/10 text-amber-400 border-amber-500/20"
+      : "bg-indigo-500/10 text-indigo-400 border-indigo-500/20"
+  }`;
+
+  if (imageUrl && !imageError) {
+    return (
+      <div className={containerClasses}>
+        <Image
+          src={imageUrl}
+          alt={name}
+          fill
+          sizes="48px"
+          className="object-cover"
+          onError={() => setImageError(true)}
+        />
+        {isBlocked && (
+          <div className="absolute inset-0 bg-rose-950/60 backdrop-blur-[1px] flex items-center justify-center">
+            <Lock className="w-4 h-4 text-rose-300" />
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className={containerClasses}>
+      {isBlocked ? <Lock className="w-5 h-5 text-rose-400" /> : <Car className="w-6 h-6" />}
+    </div>
+  );
+}
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -170,17 +219,12 @@ export default function DashboardPage() {
                   {/* Header: Identity + Status Badge */}
                   <div className="flex justify-between items-start relative z-10">
                     <div className="flex gap-3.5 items-center">
-                      <div
-                        className={`w-12 h-12 rounded-2xl flex items-center justify-center border transition-colors ${
-                          isBlocked
-                            ? "bg-rose-500/15 text-rose-400 border-rose-500/30"
-                            : isBooked
-                            ? "bg-amber-500/10 text-amber-400 border-amber-500/20"
-                            : "bg-indigo-500/10 text-indigo-400 border-indigo-500/20"
-                        }`}
-                      >
-                        {isBlocked ? <Lock className="w-5 h-5 text-rose-400" /> : <Car className="w-6 h-6" />}
-                      </div>
+                      <VehicleThumbnail
+                        imageUrl={car.imageUrl}
+                        name={car.name}
+                        isBlocked={isBlocked}
+                        isBooked={isBooked}
+                      />
                       <div>
                         <div className="flex items-center gap-2">
                           <h3 className="text-lg font-semibold text-white tracking-tight leading-tight">
