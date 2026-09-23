@@ -136,6 +136,7 @@ class AdminService {
       fuelType,
       transmission,
       seatingCapacity,
+      isActive,
     } = updateDataInput;
 
     const vehicle = await vehicleRepository.findById(id);
@@ -166,8 +167,13 @@ class AdminService {
         vehicle.seatingCapacity = parsedCapacity;
       }
     }
+    if (isActive !== undefined) {
+      vehicle.isActive = Boolean(isActive);
+    }
 
-    return await vehicleRepository.save(vehicle);
+    const saved = await vehicleRepository.save(vehicle);
+    await saved.populate({ path: 'ownerIds', select: 'username' });
+    return saved;
   }
 
   async toggleVehicleActive(id) {

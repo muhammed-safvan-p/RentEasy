@@ -72,7 +72,7 @@ class WalletRepository {
     return await transaction.save({ session: session || undefined });
   }
 
-  async findTransactions(filter = {}, populate = null, sort = { transactionDate: -1, createdAt: -1 }, limit = null, skip = null) {
+  async findTransactions(filter = {}, populate = null, sort = { transactionDate: -1, createdAt: -1, _id: -1 }, limit = null, skip = null) {
     let query = WalletTransaction.find(filter);
     if (populate) {
       if (Array.isArray(populate)) {

@@ -21,7 +21,15 @@ export interface WalletTransaction {
   createdBy?: {
     _id: string;
     username: string;
+    role?: string;
   };
+  bookingId?: {
+    _id: string;
+    customerName?: string;
+    startDateTime?: string;
+    endDateTime?: string;
+    totalAmount?: number;
+  } | string | null;
 }
 
 export interface DateGroupedTransactions {

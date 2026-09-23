@@ -49,6 +49,7 @@ const updateVehicleSchema = Joi.object({
   fuelType: Joi.string().valid('Petrol', 'Diesel', 'Electric', 'Hybrid', 'CNG').optional(),
   transmission: Joi.string().valid('Manual', 'Automatic').optional(),
   seatingCapacity: Joi.number().integer().min(1).max(100).optional(),
+  isActive: Joi.boolean().optional(),
 });
 
 const createUserSchema = Joi.object({

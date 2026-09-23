@@ -427,8 +427,8 @@ class BookingService {
             paymentMethod: refundPaymentMethod,
             amount: parsedRefundAmount,
             note: cancellationNote
-              ? `Refund for cancelled booking: ${cancellationNote.trim()}`
-              : `Refund for cancelled booking ${booking._id}`,
+              ? `Refund • ${booking.customerName || 'Customer'} (${cancellationNote.trim()})`
+              : `Refund • ${booking.customerName || 'Customer'}`,
             source: 'booking',
             bookingId: booking._id,
             createdBy: cancelledBy,
@@ -521,7 +521,11 @@ class BookingService {
           type: 'income',
           paymentMethod,
           amount: numAmount,
-          note: note ? note.trim() : `Payment for booking ${booking._id}`,
+          note: note
+            ? note.trim()
+            : booking.customerName
+            ? `Booking payment • ${booking.customerName}`
+            : `Payment for booking ${booking._id}`,
           source: 'booking',
           bookingId: booking._id,
           createdBy: recordedBy,
@@ -642,7 +646,7 @@ class BookingService {
     }
 
     const pageNum = Math.max(1, parseInt(page, 10) || 1);
-    const limitNum = Math.max(1, Math.min(100, parseInt(limit, 10) || 50));
+    const limitNum = Math.max(1, Math.min(1000, parseInt(limit, 10) || 50));
     const skip = (pageNum - 1) * limitNum;
 
     const [totalCount, bookings] = await Promise.all([

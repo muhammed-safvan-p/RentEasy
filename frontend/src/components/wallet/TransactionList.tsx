@@ -11,6 +11,7 @@ import {
   Calendar,
   Receipt,
   User,
+  UserCheck,
 } from "lucide-react";
 import { DateGroupedTransactions, WalletTransaction } from "@/types/wallet";
 
@@ -155,7 +156,17 @@ export const TransactionList: React.FC<TransactionListProps> = ({
               <div className="space-y-2">
                 {group.transactions.map((tx) => {
                   const isIncome = tx.type === "income";
-                  const displayNote = tx.note || (isIncome ? "Income Received" : "Expense Recorded");
+                  const bookingObj = typeof tx.bookingId === "object" ? tx.bookingId : null;
+                  let displayNote = tx.note;
+                  if (!displayNote) {
+                    displayNote = isIncome ? "Unspecified Income" : "Unspecified Expense";
+                  } else if (bookingObj?.customerName) {
+                    if (displayNote.startsWith("Payment for booking")) {
+                      displayNote = `Booking payment • ${bookingObj.customerName}`;
+                    } else if (displayNote.startsWith("Refund for cancelled booking")) {
+                      displayNote = `Refund • ${bookingObj.customerName}`;
+                    }
+                  }
 
                   return (
                     <div
@@ -214,6 +225,14 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                                   Manual
                                 </>
                               )}
+                            </span>
+
+                            {/* Recorded By Badge */}
+                            <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.2 rounded-md bg-white/5 text-slate-400 border border-white/5">
+                              <UserCheck className="w-2.5 h-2.5 text-indigo-400" />
+                              <span>
+                                Recorded by {tx.createdBy?.username || "Owner"}
+                              </span>
                             </span>
 
                             {/* Formatted Date */}

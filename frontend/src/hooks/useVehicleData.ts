@@ -10,6 +10,7 @@ export interface GarageVehicle {
   name: string;
   plateNumber: string;
   isActive?: boolean;
+  imageUrl?: string | null;
   totalBookings?: number;
   monthBookings?: number;
   currentBalance?: number;
