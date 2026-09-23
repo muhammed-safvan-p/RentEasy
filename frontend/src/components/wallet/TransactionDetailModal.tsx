@@ -91,10 +91,34 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
         <div className="space-y-2.5 text-xs mb-6">
           <div className="flex items-center justify-between p-2.5 bg-black/20 rounded-xl border border-white/5">
             <span className="text-slate-400">Description / Note</span>
-            <span className="font-semibold text-white max-w-[200px] text-right truncate">
-              {selectedTx.note || "No note recorded"}
+            <span className="font-semibold text-white max-w-[220px] text-right truncate">
+              {(() => {
+                const bookingObj = typeof selectedTx.bookingId === "object" ? selectedTx.bookingId : null;
+                let note = selectedTx.note;
+                if (!note) {
+                  return selectedTx.type === "income" ? "Unspecified Income" : "Unspecified Expense";
+                }
+                if (bookingObj?.customerName) {
+                  if (note.startsWith("Payment for booking")) {
+                    return `Booking payment • ${bookingObj.customerName}`;
+                  }
+                  if (note.startsWith("Refund for cancelled booking")) {
+                    return `Refund • ${bookingObj.customerName}`;
+                  }
+                }
+                return note;
+              })()}
             </span>
           </div>
+
+          {typeof selectedTx.bookingId === "object" && selectedTx.bookingId?.customerName && (
+            <div className="flex items-center justify-between p-2.5 bg-black/20 rounded-xl border border-white/5">
+              <span className="text-slate-400">Customer</span>
+              <span className="font-semibold text-white">
+                {selectedTx.bookingId.customerName}
+              </span>
+            </div>
+          )}
 
           <div className="flex items-center justify-between p-2.5 bg-black/20 rounded-xl border border-white/5">
             <span className="text-slate-400">Date & Time</span>
@@ -106,7 +130,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
           <div className="flex items-center justify-between p-2.5 bg-black/20 rounded-xl border border-white/5">
             <span className="text-slate-400">Recorded By</span>
             <span className="font-semibold text-slate-200">
-              {selectedTx.createdBy?.username || "Vehicle Owner"}
+              {selectedTx.createdBy?.username || "Owner"}
             </span>
           </div>
 

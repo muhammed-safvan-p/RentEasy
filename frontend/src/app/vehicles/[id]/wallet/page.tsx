@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, ShieldAlert, AlertCircle } from "lucide-react";
@@ -102,9 +102,36 @@ export default function VehicleWalletPage() {
     setSelectedMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
   };
 
+  // Helper to sort transactions descending (newest on top)
+  const sortTransactionsDesc = (a: WalletTransaction, b: WalletTransaction) => {
+    // 1. Compare calendar day (YYYY-MM-DD) descending
+    const dayA = (a.transactionDate || a.createdAt || "").split("T")[0];
+    const dayB = (b.transactionDate || b.createdAt || "").split("T")[0];
+    if (dayA && dayB && dayA !== dayB) {
+      return dayB.localeCompare(dayA);
+    }
+
+    // 2. On the same day, compare createdAt timestamp if present (most recently recorded first)
+    const createdA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+    const createdB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+    if (createdA && createdB && createdA !== createdB) {
+      return createdB - createdA;
+    }
+
+    // 3. Compare transactionDate timestamp
+    const dateA = a.transactionDate ? new Date(a.transactionDate).getTime() : 0;
+    const dateB = b.transactionDate ? new Date(b.transactionDate).getTime() : 0;
+    if (dateA !== dateB) {
+      return dateB - dateA;
+    }
+
+    // 4. Fallback to MongoDB _id timestamp
+    return (b._id || "").localeCompare(a._id || "");
+  };
+
   const filteredTransactions = useMemo(() => {
-    if (filter === "all") return transactions;
-    return transactions.filter((t) => t.type === filter);
+    const list = filter === "all" ? transactions : transactions.filter((t) => t.type === filter);
+    return [...list].sort(sortTransactionsDesc);
   }, [transactions, filter]);
 
   const groupedTransactions = useMemo(() => {
@@ -133,10 +160,13 @@ export default function VehicleWalletPage() {
         });
       }
 
+      // Sort transactions within this day group with newest on top
+      const sortedDayTxs = [...groups[key]].sort(sortTransactionsDesc);
+
       return {
         dateKey: key,
         dateLabel,
-        transactions: groups[key],
+        transactions: sortedDayTxs,
       };
     });
   }, [filteredTransactions]);
@@ -158,6 +188,14 @@ export default function VehicleWalletPage() {
       setDeletingTx(false);
     }
   };
+
+  const handleCloseModal = useCallback(() => {
+    setIsModalOpen(false);
+  }, []);
+
+  const handleCloseDetailModal = useCallback(() => {
+    setSelectedTx(null);
+  }, []);
 
   const handleOpenModal = () => {
     setFormType("income");
@@ -187,13 +225,17 @@ export default function VehicleWalletPage() {
 
     setSubmitting(true);
 
+    // If user selected today's date, use current timestamp so new entries sort accurately at the top of today
+    const isToday = formDate === todayStr;
+    const computedTxDate = isToday ? new Date().toISOString() : toSafeDateISOString(formDate);
+
     try {
       await api.post(`/api/vehicles/${id}/wallet/transactions`, {
         type: formType,
         paymentMethod: formPaymentMethod,
         amount: parsedAmount,
         note: formNote.trim(),
-        transactionDate: toSafeDateISOString(formDate),
+        transactionDate: computedTxDate,
       });
 
       setIsModalOpen(false);
@@ -356,7 +398,7 @@ export default function VehicleWalletPage() {
         formError={formError}
         submitting={submitting}
         todayStr={todayStr}
-        onClose={() => setIsModalOpen(false)}
+        onClose={handleCloseModal}
         onFormTypeChange={setFormType}
         onPaymentMethodChange={setFormPaymentMethod}
         onAmountChange={setFormAmount}
@@ -370,7 +412,7 @@ export default function VehicleWalletPage() {
         deletingTx={deletingTx}
         formatCurrency={formatCurrency}
         formatFullDateTime={formatFullDateTime}
-        onClose={() => setSelectedTx(null)}
+        onClose={handleCloseDetailModal}
         onDelete={handleDeleteTransaction}
       />
     </div>

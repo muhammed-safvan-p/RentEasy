@@ -19,9 +19,9 @@ const walletTransactionParamSchema = Joi.object({
 });
 
 const getWalletTransactionsQuerySchema = Joi.object({
-  month: monthFormat.optional(),
+  month: Joi.alternatives().try(monthFormat, Joi.string().valid('all')).optional(),
   page: Joi.number().integer().min(1).default(1),
-  limit: Joi.number().integer().min(1).max(100).default(100),
+  limit: Joi.number().integer().min(1).max(1000).default(100),
 });
 
 const addTransactionSchema = Joi.object({

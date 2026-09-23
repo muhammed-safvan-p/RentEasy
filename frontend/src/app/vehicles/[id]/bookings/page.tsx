@@ -241,7 +241,9 @@ export default function VehicleBookingsPage() {
         {
           amount: numAmount,
           paymentMethod: partMethod,
-          note: partNote.trim() || `Part-payment via ${partMethod}`,
+          note:
+            partNote.trim() ||
+            `Booking payment • ${selectedBooking.customerName || "Customer"}`,
         }
       );
 

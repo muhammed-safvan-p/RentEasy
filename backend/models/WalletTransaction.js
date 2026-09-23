@@ -59,7 +59,7 @@ const walletTransactionSchema = new Schema(
 );
 
 walletTransactionSchema.index({ walletId: 1, transactionDate: -1 });
-walletTransactionSchema.index({ vehicleId: 1, transactionDate: -1, createdAt: -1 });
+walletTransactionSchema.index({ vehicleId: 1, transactionDate: -1, createdAt: -1, _id: -1 });
 walletTransactionSchema.index({ vehicleId: 1, type: 1, amount: 1 });
 walletTransactionSchema.index({ bookingId: 1 }, { sparse: true });
 

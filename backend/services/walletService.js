@@ -88,25 +88,26 @@ class WalletService {
    * Lists transactions for a vehicle in a specific month and totals income/expense.
    */
   async getWalletTransactions(vehicleId, month, queryParams = {}) {
-    const { start: startDate, end: endDate } = getMonthBoundsUTC(month);
     const { page, limit } = queryParams;
 
-    const filter = {
-      vehicleId,
-      $or: [
+    const filter = { vehicleId };
+
+    if (month && month !== 'all') {
+      const { start: startDate, end: endDate } = getMonthBoundsUTC(month);
+      filter.$or = [
         { transactionDate: { $gte: startDate, $lte: endDate } },
         {
           transactionDate: { $exists: false },
           createdAt: { $gte: startDate, $lte: endDate },
         },
-      ],
-    };
+      ];
+    }
 
-    // Calculate accurate monthIncome and monthExpense across all transactions in that month
+    // Calculate accurate monthIncome and monthExpense across all transactions in that month/period
     const allMonthTransactions = await walletRepository.findTransactions(
       filter,
       null,
-      { transactionDate: -1, createdAt: -1 }
+      { transactionDate: -1, createdAt: -1, _id: -1 }
     );
 
     let monthIncome = 0;
@@ -122,14 +123,17 @@ class WalletService {
 
     const totalCount = allMonthTransactions.length;
     const pageNum = Math.max(1, parseInt(page, 10) || 1);
-    const limitNum = Math.max(1, Math.min(100, parseInt(limit, 10) || 100));
+    const limitNum = Math.max(1, Math.min(1000, parseInt(limit, 10) || 100));
     const skip = (pageNum - 1) * limitNum;
 
     // Fetch paginated and populated transactions capped at limitNum (max 100)
     const transactions = await walletRepository.findTransactions(
       filter,
-      { path: 'createdBy', select: 'username' },
-      { transactionDate: -1, createdAt: -1 },
+      [
+        { path: 'createdBy', select: 'username role' },
+        { path: 'bookingId', select: 'customerName startDateTime endDateTime totalAmount' },
+      ],
+      { transactionDate: -1, createdAt: -1, _id: -1 },
       limitNum,
       skip
     );
@@ -189,6 +193,8 @@ class WalletService {
 
       const updatedWallet = await this.applyTransaction(session, wallet, type, paymentMethod, numAmount);
       const warnings = this.buildWarnings(updatedWallet);
+
+      await transaction.populate({ path: 'createdBy', select: 'username role' });
 
       return { transaction, warnings };
     });

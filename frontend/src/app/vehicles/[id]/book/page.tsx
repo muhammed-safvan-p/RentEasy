@@ -308,7 +308,9 @@ export default function VehicleBookingPage() {
             {
               amount: Number(paidAmount),
               paymentMethod,
-              note: paymentNote.trim() || "Initial Advance / Token Payment",
+              note:
+                paymentNote.trim() ||
+                `Advance payment • ${customerName.trim() || "Customer"}`,
             }
           );
           finalBookingState = payData.booking;
