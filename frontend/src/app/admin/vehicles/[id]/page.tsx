@@ -739,16 +739,16 @@ export default function AdminVehicleDetailPage() {
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-16">
       {/* Top Navigation Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <button
           onClick={() => router.push("/admin/vehicles")}
-          className="inline-flex items-center gap-2 text-sm font-semibold text-slate-600 hover:text-slate-900 transition-colors px-3 py-1.5 rounded-lg hover:bg-slate-100"
+          className="inline-flex items-center gap-2 text-xs sm:text-sm font-semibold text-slate-600 hover:text-slate-900 transition-colors px-3 py-1.5 rounded-lg hover:bg-slate-100 self-start"
         >
           <ArrowLeft className="w-4 h-4" />
-          Back to Vehicles Fleet
+          <span>Back to Fleet</span>
         </button>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <button
             onClick={() => {
               setRefreshing(true);
@@ -827,9 +827,9 @@ export default function AdminVehicleDetailPage() {
           </div>
 
           {/* Vehicle Title & Key Metadata Column */}
-          <div className="lg:col-span-8 p-6 sm:p-8 flex flex-col justify-between">
+          <div className="lg:col-span-8 p-4 sm:p-6 lg:p-8 flex flex-col justify-between">
             <div>
-              <div className="flex flex-wrap items-start justify-between gap-4 mb-4">
+              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 sm:gap-4 mb-4">
                 <div>
                   <div className="flex items-center gap-3">
                     <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
@@ -946,8 +946,8 @@ export default function AdminVehicleDetailPage() {
               </div>
             </div>
 
-            {/* Quick Specs Strip */}
-            <div className="grid grid-cols-3 sm:grid-cols-4 gap-3 pt-4 mt-4 border-t border-slate-100">
+            {/* Quick Specs Strip: 2 cols on mobile, 4 on desktop */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3 pt-4 mt-4 border-t border-slate-100">
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
                   <Fuel className="w-4 h-4" />
@@ -993,23 +993,23 @@ export default function AdminVehicleDetailPage() {
       </div>
 
       {/* 2. Global Month & Reporting Period Bar */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 flex flex-wrap items-center justify-between gap-4">
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
+          <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
             <Calendar className="w-5 h-5" />
           </div>
           <div>
-            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+            <p className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-400">
               Active Metrics & History Scope
             </p>
-            <h4 className="text-sm font-black text-slate-900">
+            <h4 className="text-xs sm:text-sm font-black text-slate-900">
               {selectedMonth ? formatMonthDisplay(selectedMonth) : "Full Lifetime History (All Months)"}
             </h4>
           </div>
         </div>
 
         {/* Month Navigation Controls */}
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
           <button
             onClick={handleAllTime}
             className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
@@ -1058,8 +1058,8 @@ export default function AdminVehicleDetailPage() {
         </div>
       </div>
 
-      {/* 3. Executive Performance KPI Strip (5 Dedicated Cards: Bookings, Income, Expense, Balance, Lock Days) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+      {/* 3. Executive Performance KPI Strip: 2 cols on mobile, 5 on desktop */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
         {/* Card 1: Total Bookings */}
         <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm flex items-center justify-between">
           <div>
@@ -1166,10 +1166,10 @@ export default function AdminVehicleDetailPage() {
       </div>
 
       {/* 4. Tabbed Navigation */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-1.5 flex flex-wrap items-center gap-1.5">
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-1.5 flex items-center gap-1.5 overflow-x-auto max-w-full">
         <button
           onClick={() => setActiveTab("overview")}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
+          className={`flex items-center gap-2 px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer ${
             activeTab === "overview"
               ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/20"
               : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
@@ -1181,7 +1181,7 @@ export default function AdminVehicleDetailPage() {
 
         <button
           onClick={() => setActiveTab("bookings")}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
+          className={`flex items-center gap-2 px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer ${
             activeTab === "bookings"
               ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/20"
               : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
@@ -1200,7 +1200,7 @@ export default function AdminVehicleDetailPage() {
 
         <button
           onClick={() => setActiveTab("financials")}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
+          className={`flex items-center gap-2 px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer ${
             activeTab === "financials"
               ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/20"
               : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
@@ -1219,7 +1219,7 @@ export default function AdminVehicleDetailPage() {
 
         <button
           onClick={() => setActiveTab("locks")}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
+          className={`flex items-center gap-2 px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer ${
             activeTab === "locks"
               ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/20"
               : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
@@ -1238,7 +1238,7 @@ export default function AdminVehicleDetailPage() {
 
         <button
           onClick={() => setActiveTab("notes")}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
+          className={`flex items-center gap-2 px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer ${
             activeTab === "notes"
               ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/20"
               : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
@@ -1257,7 +1257,7 @@ export default function AdminVehicleDetailPage() {
 
         <button
           onClick={() => setActiveTab("dealers")}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
+          className={`flex items-center gap-2 px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer ${
             activeTab === "dealers"
               ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/20"
               : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
@@ -1404,15 +1404,15 @@ export default function AdminVehicleDetailPage() {
 
       {/* TAB 2: BOOKINGS HISTORY & DATE-WISE / MONTH-WISE METRICS */}
       {activeTab === "bookings" && (
-        <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden p-6 sm:p-8 space-y-6">
+        <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden p-4 sm:p-6 lg:p-8 space-y-6">
           {/* Header & Controls */}
           <div className="space-y-4 border-b border-slate-100 pb-5">
-            <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
                 <div className="flex items-center gap-2">
-                  <h3 className="text-lg font-bold text-slate-900">Vehicle Booking History</h3>
-                  <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-100">
-                    {selectedMonth ? formatMonthDisplay(selectedMonth) : "Full History (All Months)"}
+                  <h3 className="text-base sm:text-lg font-bold text-slate-900">Vehicle Booking History</h3>
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] sm:text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-100">
+                    {selectedMonth ? formatMonthDisplay(selectedMonth) : "Full History"}
                   </span>
                 </div>
                 <p className="text-xs text-slate-500 mt-0.5">
@@ -1421,7 +1421,7 @@ export default function AdminVehicleDetailPage() {
               </div>
 
               {/* Search Bar */}
-              <div className="relative">
+              <div className="relative w-full sm:w-64">
                 <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
                 <input
                   type="text"
@@ -1431,7 +1431,7 @@ export default function AdminVehicleDetailPage() {
                     setBookingSearch(e.target.value);
                     setBookingPage(1);
                   }}
-                  className="pl-9 pr-4 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 w-64"
+                  className="pl-9 pr-4 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 w-full"
                 />
               </div>
             </div>
@@ -1710,19 +1710,19 @@ export default function AdminVehicleDetailPage() {
           </div>
 
           {/* Transactions Ledger Card */}
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 sm:p-8 space-y-6">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-4 sm:p-6 lg:p-8 space-y-6">
             {/* Header & Controls */}
             <div className="space-y-4 border-b border-slate-100 pb-5">
-              <div className="flex flex-wrap items-center justify-between gap-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
-                  <h3 className="text-lg font-bold text-slate-900">Wallet Financial Ledger</h3>
+                  <h3 className="text-base sm:text-lg font-bold text-slate-900">Wallet Financial Ledger</h3>
                   <p className="text-xs text-slate-500 mt-0.5">
                     Month-wise and date-wise audit log of all income and expense transactions
                   </p>
                 </div>
 
                 {/* Search */}
-                <div className="relative">
+                <div className="relative w-full sm:w-60">
                   <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
                   <input
                     type="text"
@@ -1732,7 +1732,7 @@ export default function AdminVehicleDetailPage() {
                       setTxSearch(e.target.value);
                       setTxPage(1);
                     }}
-                    className="pl-9 pr-4 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 w-60"
+                    className="pl-9 pr-4 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 w-full"
                   />
                 </div>
               </div>
