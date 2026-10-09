@@ -13,7 +13,8 @@ export default function BottomNav() {
     pathname === "/signup" ||
     pathname === "/" ||
     pathname?.startsWith("/admin") ||
-    pathname?.endsWith("/book")
+    pathname?.endsWith("/book") ||
+    pathname?.includes("/add-vehicle")
   ) {
     return null;
   }
@@ -45,7 +46,10 @@ export default function BottomNav() {
   const safeIndex = activeIndex >= 0 ? activeIndex : 0;
 
   return (
-    <div className="fixed bottom-6 max-w-[420px] w-[calc(100%-2rem)] left-1/2 -translate-x-1/2 z-40">
+    <div
+      className="fixed max-w-[420px] w-[calc(100%-2rem)] left-1/2 -translate-x-1/2 z-40 transition-all"
+      style={{ bottom: "calc(1.5rem + env(safe-area-inset-bottom, 0px))" }}
+    >
       <nav className="relative flex items-center h-[72px] rounded-full bg-[#16162a]/90 border border-white/10 shadow-[0_12px_40px_rgba(0,0,0,0.6)] backdrop-blur-2xl px-2">
         
         {/* Sliding Active Pill */}

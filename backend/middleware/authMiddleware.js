@@ -33,7 +33,7 @@ const protect = async (req, res, next) => {
         });
       }
       next();
-    } catch (error) {
+    } catch (_error) {
       res.status(401).json({ message: 'Not authorized, token failed' });
     }
   } else {
@@ -76,7 +76,8 @@ const authorizeVehicleAccess = async (req, res, next) => {
     // If vehicle is blocked by admin, prevent non-admin owners from performing any mutations
     if (!isAdmin && vehicle.isActive === false && req.method !== 'GET') {
       return res.status(403).json({
-        message: 'This vehicle is currently locked/blocked by administrator. Please contact support: +91 9496432072',
+        message:
+          'This vehicle is currently locked/blocked by administrator. Please contact support: +91 9496432072',
         isVehicleBlocked: true,
       });
     }

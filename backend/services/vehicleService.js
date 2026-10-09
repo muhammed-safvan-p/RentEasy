@@ -138,11 +138,11 @@ class VehicleService {
         startDateTime: b.startDateTime,
         endDateTime: b.endDateTime,
         startDate: b.startDateTime, // compatibility alias
-        endDate: b.endDateTime,     // compatibility alias
+        endDate: b.endDateTime, // compatibility alias
         totalAmount: b.totalAmount,
         paidAmount: b.paidAmount,
         balanceAmount: b.balanceAmount,
-        amount: b.totalAmount,      // compatibility alias
+        amount: b.totalAmount, // compatibility alias
         isCancelled: b.isCancelled,
         createdBy: b.createdBy
           ? { _id: b.createdBy._id, username: b.createdBy.username }
@@ -155,9 +155,7 @@ class VehicleService {
         endDate: l.endDate,
         reason: l.reason,
         createdAt: l.createdAt,
-        lockedBy: l.lockedBy
-          ? { _id: l.lockedBy._id, username: l.lockedBy.username }
-          : undefined,
+        lockedBy: l.lockedBy ? { _id: l.lockedBy._id, username: l.lockedBy.username } : undefined,
       })),
     };
   }

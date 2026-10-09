@@ -8,7 +8,6 @@ import {
   ArrowUpRight,
   Banknote,
   Building2,
-  Calendar,
   Receipt,
   User,
   UserCheck,

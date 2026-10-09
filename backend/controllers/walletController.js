@@ -51,8 +51,12 @@ class WalletController {
   // PATCH /api/vehicles/:vehicleId/wallet/transactions/:id
   async editTransaction(req, res, next) {
     try {
-      const { id } = req.params;
-      const { transaction, warnings } = await walletService.editTransaction(id, req.body);
+      const { vehicleId, id } = req.params;
+      const { transaction, warnings } = await walletService.editTransaction(
+        vehicleId,
+        id,
+        req.body
+      );
       res.status(200).json({ transaction, warnings });
     } catch (error) {
       next(error);
@@ -62,8 +66,8 @@ class WalletController {
   // DELETE /api/vehicles/:vehicleId/wallet/transactions/:id
   async deleteTransaction(req, res, next) {
     try {
-      const { id } = req.params;
-      const { warnings } = await walletService.deleteTransaction(id);
+      const { vehicleId, id } = req.params;
+      const { warnings } = await walletService.deleteTransaction(vehicleId, id);
       res.status(200).json({ message: 'Transaction deleted successfully', warnings });
     } catch (error) {
       next(error);

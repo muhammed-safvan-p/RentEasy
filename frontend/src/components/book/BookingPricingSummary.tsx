@@ -25,7 +25,6 @@ interface BookingPricingSummaryProps {
 }
 
 export const BookingPricingSummary: React.FC<BookingPricingSummaryProps> = ({
-  vehicle,
   suggestedRent,
   totalAmount,
   isAmountOverridden,

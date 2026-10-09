@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useEffect, useState, useMemo, Suspense } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import Image from "next/image";
+import { SafeImage } from "@/components/common/SafeImage";
 import {
   ArrowLeft,
   CheckCircle2,
@@ -42,48 +42,60 @@ interface ConfirmedBooking {
   status?: string;
 }
 
-export default function VehicleBookingPage() {
+function getInitialStartDateTime(dateParam?: string | null): string {
+  if (dateParam) {
+    const parts = dateParam.split("-").map(Number);
+    if (parts.length === 3 && !parts.some(isNaN)) {
+      return toLocalISOString(new Date(parts[0], parts[1] - 1, parts[2], 9, 0, 0));
+    }
+  }
+  const now = new Date();
+  const start = new Date(now);
+  start.setHours(start.getHours() + 1, 0, 0, 0);
+  return toLocalISOString(start);
+}
+
+function getInitialEndDateTime(dateParam?: string | null): string {
+  if (dateParam) {
+    const parts = dateParam.split("-").map(Number);
+    if (parts.length === 3 && !parts.some(isNaN)) {
+      const start = new Date(parts[0], parts[1] - 1, parts[2], 9, 0, 0);
+      const end = new Date(start);
+      end.setDate(end.getDate() + 1);
+      return toLocalISOString(end);
+    }
+  }
+  const now = new Date();
+  const start = new Date(now);
+  start.setHours(start.getHours() + 1, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
+  return toLocalISOString(end);
+}
+
+function VehicleBookingContent() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const dateParam = searchParams?.get("date") ?? null;
 
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
   // Form Fields
   const [customerName, setCustomerName] = useState("");
-  const [startDateTime, setStartDateTime] = useState(() => {
-    if (typeof window !== "undefined") {
-      const params = new URLSearchParams(window.location.search);
-      const dateParam = params.get("date");
-      if (dateParam) {
-        const [year, month, day] = dateParam.split("-").map(Number);
-        return toLocalISOString(new Date(year, month - 1, day, 9, 0, 0));
-      }
+  const [startDateTime, setStartDateTime] = useState(() => getInitialStartDateTime(dateParam));
+  const [endDateTime, setEndDateTime] = useState(() => getInitialEndDateTime(dateParam));
+
+  const [prevDateParam, setPrevDateParam] = useState(dateParam);
+  if (dateParam !== prevDateParam) {
+    setPrevDateParam(dateParam);
+    if (dateParam) {
+      setStartDateTime(getInitialStartDateTime(dateParam));
+      setEndDateTime(getInitialEndDateTime(dateParam));
     }
-    const now = new Date();
-    const start = new Date(now);
-    start.setHours(start.getHours() + 1, 0, 0, 0);
-    return toLocalISOString(start);
-  });
-  const [endDateTime, setEndDateTime] = useState(() => {
-    if (typeof window !== "undefined") {
-      const params = new URLSearchParams(window.location.search);
-      const dateParam = params.get("date");
-      if (dateParam) {
-        const [year, month, day] = dateParam.split("-").map(Number);
-        const start = new Date(year, month - 1, day, 9, 0, 0);
-        const end = new Date(start);
-        end.setDate(end.getDate() + 1);
-        return toLocalISOString(end);
-      }
-    }
-    const now = new Date();
-    const start = new Date(now);
-    start.setHours(start.getHours() + 1, 0, 0, 0);
-    const end = new Date(start);
-    end.setDate(end.getDate() + 1);
-    return toLocalISOString(end);
-  });
+  }
+
   const [customTotalAmount, setCustomTotalAmount] = useState<number | null>(null);
 
   // Payment section state
@@ -493,7 +505,7 @@ export default function VehicleBookingPage() {
         <div className="flex items-center gap-3.5 relative z-10">
           <div className="w-13 h-13 rounded-2xl bg-indigo-500/15 border border-indigo-500/25 flex items-center justify-center text-indigo-400 shrink-0 overflow-hidden shadow-sm relative">
             {vehicle?.imageUrl ? (
-              <Image
+              <SafeImage
                 src={vehicle.imageUrl}
                 alt={vehicle.name}
                 width={80}
@@ -627,5 +639,20 @@ export default function VehicleBookingPage() {
         </div>
       </form>
     </div>
+  );
+}
+
+export default function VehicleBookingPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex flex-col min-h-screen items-center justify-center p-6 text-slate-400">
+          <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin mb-3" />
+          <p className="text-xs font-semibold">Loading booking form...</p>
+        </div>
+      }
+    >
+      <VehicleBookingContent />
+    </Suspense>
   );
 }

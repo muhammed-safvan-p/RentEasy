@@ -56,11 +56,7 @@ class WalletRepository {
    * General atomic findByIdAndUpdate on Wallet.
    */
   async findByIdAndUpdate(id, update, options = {}, session = null) {
-    let query = Wallet.findByIdAndUpdate(
-      id,
-      update,
-      { returnDocument: 'after', ...options }
-    );
+    let query = Wallet.findByIdAndUpdate(id, update, { returnDocument: 'after', ...options });
     if (session) {
       query = query.session(session);
     }
@@ -72,7 +68,13 @@ class WalletRepository {
     return await transaction.save({ session: session || undefined });
   }
 
-  async findTransactions(filter = {}, populate = null, sort = { transactionDate: -1, createdAt: -1, _id: -1 }, limit = null, skip = null) {
+  async findTransactions(
+    filter = {},
+    populate = null,
+    sort = { transactionDate: -1, createdAt: -1, _id: -1 },
+    limit = null,
+    skip = null
+  ) {
     let query = WalletTransaction.find(filter);
     if (populate) {
       if (Array.isArray(populate)) {
@@ -95,12 +97,16 @@ class WalletRepository {
     return await query;
   }
 
-  async findTransactionById(id) {
-    return await WalletTransaction.findById(id);
+  async findTransactionById(id, session = null) {
+    let query = WalletTransaction.findById(id);
+    if (session) {
+      query = query.session(session);
+    }
+    return await query;
   }
 
-  async deleteTransaction(transaction) {
-    return await transaction.deleteOne();
+  async deleteTransaction(transaction, session = null) {
+    return await transaction.deleteOne({ session: session || undefined });
   }
 
   async findIncomeTransactionsByVehicle(vehicleId) {
@@ -111,7 +117,8 @@ class WalletRepository {
    * MongoDB aggregation pipeline to compute total income revenue for a vehicle.
    */
   async aggregateTotalRevenue(vehicleId) {
-    const objectId = typeof vehicleId === 'string' ? new mongoose.Types.ObjectId(vehicleId) : vehicleId;
+    const objectId =
+      typeof vehicleId === 'string' ? new mongoose.Types.ObjectId(vehicleId) : vehicleId;
     const result = await WalletTransaction.aggregate([
       { $match: { vehicleId: objectId, type: 'income' } },
       { $group: { _id: null, totalRevenue: { $sum: '$amount' } } },

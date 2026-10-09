@@ -16,9 +16,12 @@ interface UseModalA11yOptions {
 export function useModalA11y({ isOpen, onClose, initialFocusRef }: UseModalA11yOptions) {
   const modalRef = useRef<HTMLDivElement | null>(null);
   const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
   const initialFocusRefRef = useRef(initialFocusRef);
-  initialFocusRefRef.current = initialFocusRef;
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+    initialFocusRefRef.current = initialFocusRef;
+  }, [onClose, initialFocusRef]);
 
   useEffect(() => {
     if (!isOpen) return;

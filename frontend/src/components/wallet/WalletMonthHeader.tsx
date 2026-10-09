@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { ChevronLeft, ChevronRight, Calendar, TrendingUp, TrendingDown, Scale, Plus } from "lucide-react";
+import { ChevronLeft, ChevronRight, Calendar, TrendingUp, TrendingDown, Scale } from "lucide-react";
 
 interface WalletMonthHeaderProps {
   selectedMonth: Date;
@@ -12,7 +12,7 @@ interface WalletMonthHeaderProps {
   formatMonthDisplay: (date: Date) => string;
   onPrevMonth: () => void;
   onNextMonth: () => void;
-  onOpenAddModal: () => void;
+  onOpenAddModal?: () => void;
 }
 
 export const WalletMonthHeader: React.FC<WalletMonthHeaderProps> = ({
@@ -24,7 +24,6 @@ export const WalletMonthHeader: React.FC<WalletMonthHeaderProps> = ({
   formatMonthDisplay,
   onPrevMonth,
   onNextMonth,
-  onOpenAddModal,
 }) => {
   const netFlow = monthIncome - monthExpense;
 

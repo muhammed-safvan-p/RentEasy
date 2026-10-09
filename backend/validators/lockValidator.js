@@ -6,15 +6,11 @@ const createLockSchema = Joi.object({
     'date.format': '"startDate" must be a valid ISO date (e.g. 2026-09-25)',
     'any.required': '"startDate" is required',
   }),
-  endDate: Joi.date()
-    .iso()
-    .min(Joi.ref('startDate'))
-    .required()
-    .messages({
-      'date.format': '"endDate" must be a valid ISO date',
-      'date.min': '"endDate" must be on or after "startDate"',
-      'any.required': '"endDate" is required',
-    }),
+  endDate: Joi.date().iso().min(Joi.ref('startDate')).required().messages({
+    'date.format': '"endDate" must be a valid ISO date',
+    'date.min': '"endDate" must be on or after "startDate"',
+    'any.required': '"endDate" is required',
+  }),
   reason: Joi.string().trim().min(1).max(500).required().messages({
     'string.empty': 'Reason cannot be empty',
     'string.min': 'Reason must have at least 1 character',
