@@ -6,11 +6,19 @@ import { usePathname, useRouter } from "next/navigation";
 import { Home, Users, Car, LogOut, Menu, X } from "lucide-react";
 import { api, clearAuthToken } from "@/lib/api";
 import { logger } from "@/lib/logger";
+import { useCurrentUser } from "@/hooks/useVehicleData";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { user, isLoading } = useCurrentUser();
+
+  useEffect(() => {
+    if (!isLoading && (!user || user.role !== "admin")) {
+      router.replace("/dashboard");
+    }
+  }, [user, isLoading, router]);
 
   const navItems = [
     { name: "Dashboard", href: "/admin/dashboard", icon: Home },
@@ -18,10 +26,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     { name: "Vehicles", href: "/admin/vehicles", icon: Car },
   ];
 
-  // Auto-close mobile drawer on route change
-  useEffect(() => {
-    setMobileMenuOpen(false);
-  }, [pathname]);
+
 
   // Handle ESC key to close mobile drawer
   useEffect(() => {
@@ -88,6 +93,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             <Link
               key={item.name}
               href={item.href}
+              onClick={() => setMobileMenuOpen(false)}
               className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
                 isActive
                   ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/25"
@@ -113,6 +119,17 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       </div>
     </div>
   );
+
+  if (isLoading || !user || user.role !== "admin") {
+    return (
+      <div className="flex h-screen w-full items-center justify-center bg-slate-900 text-white">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin" />
+          <p className="text-xs text-slate-400 font-medium">Verifying admin access...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="admin-layout flex h-screen w-full bg-[#f8fafc] text-slate-800 font-sans overflow-hidden">
@@ -162,11 +179,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           {/* User Profile Pill */}
           <div className="flex items-center gap-3 shrink-0">
             <div className="text-right hidden sm:block">
-              <p className="font-semibold text-xs text-slate-700">Admin User</p>
+              <p className="font-semibold text-xs text-slate-700">{user.username}</p>
               <p className="text-slate-400 text-[10px]">System Administrator</p>
             </div>
-            <div className="w-9 h-9 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold text-xs shadow-xs">
-              A
+            <div className="w-9 h-9 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold text-xs shadow-xs uppercase">
+              {user.username.charAt(0)}
             </div>
           </div>
         </header>

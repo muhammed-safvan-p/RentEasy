@@ -16,9 +16,7 @@ import {
   UserX,
   ShieldCheck,
   Car,
-  Calendar,
-  X,
-  Loader2,
+  Phone,
   ChevronLeft,
   ChevronRight,
   ChevronsLeft,
@@ -27,10 +25,14 @@ import {
 import { api } from "@/lib/api";
 import { formatDateNice } from "@/lib/formatters";
 import { ErrorBanner } from "@/components/common/ErrorBanner";
+import AddUserModal from "@/components/admin/users/AddUserModal";
+import EditUserModal from "@/components/admin/users/EditUserModal";
+import DeleteUserModal from "@/components/admin/users/DeleteUserModal";
 
 interface UserData {
   _id: string;
   username: string;
+  phone?: string;
   role: "user" | "admin" | string;
   isBlock: boolean;
   vehicleCount?: number;
@@ -59,24 +61,8 @@ export default function AdminUsersPage() {
 
   // Modal States
   const [showAddModal, setShowAddModal] = useState(false);
-  const [addUsername, setAddUsername] = useState("");
-  const [addPassword, setAddPassword] = useState("");
-  const [addRole, setAddRole] = useState<"user" | "admin">("user");
-  const [addIsBlock, setAddIsBlock] = useState(false);
-  const [submittingAdd, setSubmittingAdd] = useState(false);
-  const [addError, setAddError] = useState("");
-
   const [editingUser, setEditingUser] = useState<UserData | null>(null);
-  const [editUsername, setEditUsername] = useState("");
-  const [editPassword, setEditPassword] = useState("");
-  const [editRole, setEditRole] = useState<"user" | "admin">("user");
-  const [editIsBlock, setEditIsBlock] = useState(false);
-  const [submittingEdit, setSubmittingEdit] = useState(false);
-  const [editError, setEditError] = useState("");
-
   const [deletingUser, setDeletingUser] = useState<UserData | null>(null);
-  const [submittingDelete, setSubmittingDelete] = useState(false);
-  const [deleteError, setDeleteError] = useState("");
 
   // Fetch Users
   const fetchUsers = useCallback(async () => {
@@ -122,100 +108,20 @@ export default function AdminUsersPage() {
     }
   };
 
-  // Add User Submission
-  const handleAddSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!addUsername.trim() || !addPassword.trim()) {
-      setAddError("Username and password are required");
-      return;
-    }
-    setSubmittingAdd(true);
-    setAddError("");
-
-    try {
-      const data = await api.post<{ user: UserData }>("/api/admin/users", {
-        username: addUsername.trim(),
-        password: addPassword.trim(),
-        role: addRole,
-        isBlock: addIsBlock,
-      });
-      if (data.user) {
-        setUsers((prev) => [data.user, ...prev]);
-      }
-      setShowAddModal(false);
-      setAddUsername("");
-      setAddPassword("");
-      setAddRole("user");
-      setAddIsBlock(false);
-    } catch (err: unknown) {
-      setAddError(err instanceof Error ? err.message : "Failed to add user");
-    } finally {
-      setSubmittingAdd(false);
-    }
-  };
-
-  // Open Edit Modal
   const handleOpenEdit = (user: UserData) => {
     setEditingUser(user);
-    setEditUsername(user.username);
-    setEditPassword("");
-    setEditRole((user.role as "user" | "admin") || "user");
-    setEditIsBlock(user.isBlock);
-    setEditError("");
   };
 
-  // Edit User Submission
-  const handleEditSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingUser) return;
-    if (!editUsername.trim()) {
-      setEditError("Username cannot be empty");
-      return;
-    }
-    setSubmittingEdit(true);
-    setEditError("");
-
-    try {
-      const payload: {
-        username: string;
-        role: string;
-        isBlock: boolean;
-        password?: string;
-      } = {
-        username: editUsername.trim(),
-        role: editRole,
-        isBlock: editIsBlock,
-      };
-
-      if (editPassword.trim()) {
-        payload.password = editPassword.trim();
-      }
-
-      const updated = await api.put<UserData>(`/api/admin/users/${editingUser._id}`, payload);
-      setUsers((prev) => prev.map((u) => (u._id === updated._id ? { ...u, ...updated } : u)));
-      setEditingUser(null);
-    } catch (err: unknown) {
-      setEditError(err instanceof Error ? err.message : "Failed to update user");
-    } finally {
-      setSubmittingEdit(false);
-    }
+  const handleUserAdded = (newUser: UserData) => {
+    setUsers((prev) => [newUser, ...prev]);
   };
 
-  // Delete User Submission
-  const handleDeleteSubmit = async () => {
-    if (!deletingUser) return;
-    setSubmittingDelete(true);
-    setDeleteError("");
+  const handleUserUpdated = (updatedUser: UserData) => {
+    setUsers((prev) => prev.map((u) => (u._id === updatedUser._id ? { ...u, ...updatedUser } : u)));
+  };
 
-    try {
-      await api.delete(`/api/admin/users/${deletingUser._id}`);
-      setUsers((prev) => prev.filter((u) => u._id !== deletingUser._id));
-      setDeletingUser(null);
-    } catch (err: unknown) {
-      setDeleteError(err instanceof Error ? err.message : "Failed to delete user");
-    } finally {
-      setSubmittingDelete(false);
-    }
+  const handleUserDeleted = (deletedId: string) => {
+    setUsers((prev) => prev.filter((u) => u._id !== deletedId));
   };
 
   // KPI Metrics Calculation
@@ -236,6 +142,7 @@ export default function AdminUsersPage() {
         const q = search.toLowerCase();
         const matches =
           u.username.toLowerCase().includes(q) ||
+          (u.phone && u.phone.includes(q)) ||
           u._id.toLowerCase().includes(q);
         if (!matches) return false;
       }
@@ -288,7 +195,6 @@ export default function AdminUsersPage() {
           <button
             onClick={() => {
               setShowAddModal(true);
-              setAddError("");
             }}
             className="flex items-center gap-2 px-4 py-2 text-xs font-bold text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 transition-all shadow-sm shadow-indigo-600/20 cursor-pointer"
           >
@@ -459,6 +365,10 @@ export default function AdminUsersPage() {
                     </div>
                     <div className="min-w-0">
                       <p className="font-bold text-slate-900 text-sm truncate">{user.username}</p>
+                      <p className="text-[11px] text-slate-500 font-medium flex items-center gap-1 mt-0.5">
+                        <Phone className="w-3 h-3 text-slate-400" />
+                        {user.phone ? `+91 ${user.phone}` : "—"}
+                      </p>
                       <button
                         onClick={() => handleCopyId(user._id)}
                         className="inline-flex items-center gap-1 font-mono text-[10px] text-slate-400 hover:text-slate-700 mt-0.5"
@@ -545,7 +455,6 @@ export default function AdminUsersPage() {
                     <button
                       onClick={() => {
                         setDeletingUser(user);
-                        setDeleteError("");
                       }}
                       className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
                       title="Delete User"
@@ -565,6 +474,7 @@ export default function AdminUsersPage() {
             <thead>
               <tr className="bg-slate-50/80 border-b border-slate-200 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
                 <th className="py-3.5 px-6">User / Account</th>
+                <th className="py-3.5 px-6">Phone</th>
                 <th className="py-3.5 px-6">Role</th>
                 <th className="py-3.5 px-6">Assigned Vehicles</th>
                 <th className="py-3.5 px-6">Joined On</th>
@@ -586,6 +496,9 @@ export default function AdminUsersPage() {
                       </div>
                     </td>
                     <td className="px-6 py-4">
+                      <div className="h-4 w-24 bg-slate-100 rounded" />
+                    </td>
+                    <td className="px-6 py-4">
                       <div className="h-5 w-20 bg-slate-100 rounded-full" />
                     </td>
                     <td className="px-6 py-4">
@@ -604,7 +517,7 @@ export default function AdminUsersPage() {
                 ))
               ) : filteredUsers.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-16 text-center">
+                  <td colSpan={7} className="py-16 text-center">
                     <Users className="w-10 h-10 text-slate-300 mx-auto mb-2" />
                     <p className="text-sm font-semibold text-slate-700">No users found</p>
                     <p className="text-xs text-slate-400 mt-1">
@@ -639,6 +552,18 @@ export default function AdminUsersPage() {
                           </button>
                         </div>
                       </div>
+                    </td>
+
+                    {/* Phone */}
+                    <td className="px-6 py-4 text-slate-600 font-medium">
+                      {user.phone ? (
+                        <span className="inline-flex items-center gap-1.5 font-mono text-xs text-slate-700">
+                          <Phone className="w-3.5 h-3.5 text-slate-400" />
+                          +91 {user.phone}
+                        </span>
+                      ) : (
+                        <span className="text-slate-400">—</span>
+                      )}
                     </td>
 
                     {/* Role */}
@@ -719,7 +644,6 @@ export default function AdminUsersPage() {
                         <button
                           onClick={() => {
                             setDeletingUser(user);
-                            setDeleteError("");
                           }}
                           className="p-1.5 rounded-lg text-slate-500 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
                           title="Delete User"
@@ -800,268 +724,24 @@ export default function AdminUsersPage() {
         )}
       </div>
 
-      {/* --- MODALS --- */}
+      {/* MODALS */}
+      <AddUserModal
+        isOpen={showAddModal}
+        onClose={() => setShowAddModal(false)}
+        onSuccess={handleUserAdded}
+      />
 
-      {/* ADD USER MODAL */}
-      {showAddModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-in fade-in">
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-md w-full p-5 sm:p-6 space-y-4 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
-                  <Plus className="w-5 h-5" />
-                </div>
-                <h3 className="text-base font-bold text-slate-900">Create New User</h3>
-              </div>
-              <button
-                onClick={() => setShowAddModal(false)}
-                className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
+      <EditUserModal
+        user={editingUser}
+        onClose={() => setEditingUser(null)}
+        onSuccess={handleUserUpdated}
+      />
 
-            {addError && (
-              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs font-semibold text-rose-700">
-                {addError}
-              </div>
-            )}
-
-            <form onSubmit={handleAddSubmit} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                  Username
-                </label>
-                <input
-                  type="text"
-                  value={addUsername}
-                  onChange={(e) => setAddUsername(e.target.value)}
-                  placeholder="e.g. rahul_sharma"
-                  className="w-full text-xs p-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium text-slate-800"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                  Password
-                </label>
-                <input
-                  type="password"
-                  value={addPassword}
-                  onChange={(e) => setAddPassword(e.target.value)}
-                  placeholder="Minimum 6 characters"
-                  className="w-full text-xs p-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium text-slate-800"
-                  required
-                />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                    Account Role
-                  </label>
-                  <select
-                    value={addRole}
-                    onChange={(e) => setAddRole(e.target.value as "user" | "admin")}
-                    className="w-full text-xs p-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white font-medium text-slate-800"
-                  >
-                    <option value="user">Standard User</option>
-                    <option value="admin">Administrator</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                    Initial Status
-                  </label>
-                  <select
-                    value={addIsBlock ? "blocked" : "active"}
-                    onChange={(e) => setAddIsBlock(e.target.value === "blocked")}
-                    className="w-full text-xs p-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white font-medium text-slate-800"
-                  >
-                    <option value="active">Active (Enabled)</option>
-                    <option value="blocked">Blocked (Restricted)</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-end gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowAddModal(false)}
-                  className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={submittingAdd}
-                  className="px-5 py-2 rounded-xl text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-sm flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
-                >
-                  {submittingAdd && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                  <span>Create Account</span>
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* EDIT USER MODAL */}
-      {editingUser && (
-        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-in fade-in">
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-md w-full p-5 sm:p-6 space-y-4 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
-                  <Edit className="w-5 h-5" />
-                </div>
-                <h3 className="text-base font-bold text-slate-900">Edit User Profile</h3>
-              </div>
-              <button
-                onClick={() => setEditingUser(null)}
-                className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {editError && (
-              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs font-semibold text-rose-700">
-                {editError}
-              </div>
-            )}
-
-            <form onSubmit={handleEditSubmit} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                  Username
-                </label>
-                <input
-                  type="text"
-                  value={editUsername}
-                  onChange={(e) => setEditUsername(e.target.value)}
-                  className="w-full text-xs p-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium text-slate-800"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center justify-between">
-                  <span>Reset Password</span>
-                  <span className="text-[10px] text-slate-400 font-normal normal-case">Optional</span>
-                </label>
-                <input
-                  type="password"
-                  value={editPassword}
-                  onChange={(e) => setEditPassword(e.target.value)}
-                  placeholder="New password (minimum 6 characters)"
-                  className="w-full text-xs p-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium text-slate-800"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                    Role
-                  </label>
-                  <select
-                    value={editRole}
-                    onChange={(e) => setEditRole(e.target.value as "user" | "admin")}
-                    className="w-full text-xs p-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white font-medium text-slate-800"
-                  >
-                    <option value="user">Standard User</option>
-                    <option value="admin">Administrator</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                    Account Status
-                  </label>
-                  <select
-                    value={editIsBlock ? "blocked" : "active"}
-                    onChange={(e) => setEditIsBlock(e.target.value === "blocked")}
-                    className="w-full text-xs p-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white font-medium text-slate-800"
-                  >
-                    <option value="active">Active (Enabled)</option>
-                    <option value="blocked">Blocked (Restricted)</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-end gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setEditingUser(null)}
-                  className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={submittingEdit}
-                  className="px-5 py-2 rounded-xl text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-sm flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
-                >
-                  {submittingEdit && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                  <span>Save Changes</span>
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* DELETE CONFIRMATION MODAL */}
-      {deletingUser && (
-        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-in fade-in">
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-md w-full p-5 sm:p-6 space-y-4 max-h-[90vh] overflow-y-auto">
-            <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center border border-rose-100">
-              <Trash2 className="w-6 h-6" />
-            </div>
-
-            <div>
-              <h3 className="text-lg font-bold text-slate-900">Delete User Account</h3>
-              <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                Are you sure you want to permanently delete the account for{" "}
-                <strong className="text-slate-900">{deletingUser.username}</strong>?
-                {deletingUser.vehicleCount ? (
-                  <span className="block mt-1 text-amber-600 font-medium">
-                    Note: This user is assigned to {deletingUser.vehicleCount} vehicle(s) and will be removed from co-ownership.
-                  </span>
-                ) : null}
-              </p>
-            </div>
-
-            {deleteError && (
-              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs font-semibold text-rose-700">
-                {deleteError}
-              </div>
-            )}
-
-            <div className="flex items-center justify-end gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => setDeletingUser(null)}
-                disabled={submittingDelete}
-                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 disabled:opacity-50 cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleDeleteSubmit}
-                disabled={submittingDelete}
-                className="px-5 py-2 rounded-xl text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 shadow-sm flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
-              >
-                {submittingDelete && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                <span>Delete User</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <DeleteUserModal
+        user={deletingUser}
+        onClose={() => setDeletingUser(null)}
+        onSuccess={handleUserDeleted}
+      />
     </div>
   );
 }

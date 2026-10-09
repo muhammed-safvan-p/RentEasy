@@ -3,17 +3,15 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import Image from "next/image";
+import { SafeImage } from "@/components/common/SafeImage";
 import {
   Car,
   ArrowLeft,
-  User,
   Edit,
   Check,
   Copy,
   Calendar,
   CalendarDays,
-  Clock,
   TrendingUp,
   Fuel,
   Gauge,
@@ -21,39 +19,28 @@ import {
   ShieldCheck,
   Wallet,
   Lock,
-  Unlock,
-  Plus,
-  Trash2,
   RefreshCw,
   ExternalLink,
   DollarSign,
   FileText,
   Building2,
   AlertCircle,
-  Sparkles,
   Info,
   ChevronRight,
   ChevronLeft,
-  ChevronsLeft,
-  ChevronsRight,
-  Search,
   X,
   Loader2,
   CheckCircle2,
   XCircle,
   Tag,
   ArrowUpRight,
-  CalendarX2,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { logger } from "@/lib/logger";
 import {
   formatCurrency,
-  formatDateNice,
   formatDateTimeNice,
-  formatFullDateTime,
   formatMonthDisplay,
-  getBookingDurationLabel,
   getBookingStatus,
 } from "@/lib/formatters";
 import {
@@ -67,6 +54,12 @@ import {
   OperationalNote,
 } from "@/types";
 import { EditVehicleModal } from "@/components/admin/vehicles/EditVehicleModal";
+import OverviewTab from "@/components/admin/vehicles/tabs/OverviewTab";
+import BookingsTab from "@/components/admin/vehicles/tabs/BookingsTab";
+import FinancialsTab from "@/components/admin/vehicles/tabs/FinancialsTab";
+import LocksTab from "@/components/admin/vehicles/tabs/LocksTab";
+import NotesTab from "@/components/admin/vehicles/tabs/NotesTab";
+import DealersTab from "@/components/admin/vehicles/tabs/DealersTab";
 
 type TabKey = "overview" | "bookings" | "financials" | "locks" | "notes" | "dealers";
 
@@ -91,14 +84,7 @@ export default function AdminVehicleDetailPage() {
   const [error, setError] = useState("");
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [togglingActive, setTogglingActive] = useState(false);
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-
-  // Auto-open Edit Modal if navigated via ?edit=true deep link
-  useEffect(() => {
-    if (searchParams?.get("edit") === "true") {
-      setIsEditModalOpen(true);
-    }
-  }, [searchParams]);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(() => searchParams?.get("edit") === "true");
 
   // Clean URL query when closing edit modal
   const handleCloseEditModal = () => {
@@ -112,22 +98,6 @@ export default function AdminVehicleDetailPage() {
 
   // Month & Period Selection (null = All Time / Full History)
   const [selectedMonth, setSelectedMonth] = useState<Date | null>(null);
-
-  // Bookings Filter & Pagination States
-  const [bookingFilter, setBookingFilter] = useState<string>("all");
-  const [bookingSearch, setBookingSearch] = useState("");
-  const [bookingFromDate, setBookingFromDate] = useState("");
-  const [bookingToDate, setBookingToDate] = useState("");
-  const [bookingPage, setBookingPage] = useState(1);
-  const [bookingPageSize, setBookingPageSize] = useState(20);
-
-  // Wallet Filter & Pagination States
-  const [txFilter, setTxFilter] = useState<string>("all");
-  const [txSearch, setTxSearch] = useState("");
-  const [txFromDate, setTxFromDate] = useState("");
-  const [txToDate, setTxToDate] = useState("");
-  const [txPage, setTxPage] = useState(1);
-  const [txPageSize, setTxPageSize] = useState(20);
 
   // Modal States
   const [showAddNoteModal, setShowAddNoteModal] = useState(false);
@@ -237,8 +207,6 @@ export default function AdminVehicleDetailPage() {
       const base = prev || new Date();
       return new Date(base.getFullYear(), base.getMonth() - 1, 1);
     });
-    setBookingPage(1);
-    setTxPage(1);
   };
 
   const handleNextMonth = () => {
@@ -246,20 +214,14 @@ export default function AdminVehicleDetailPage() {
       const base = prev || new Date();
       return new Date(base.getFullYear(), base.getMonth() + 1, 1);
     });
-    setBookingPage(1);
-    setTxPage(1);
   };
 
   const handleCurrentMonth = () => {
     setSelectedMonth(new Date());
-    setBookingPage(1);
-    setTxPage(1);
   };
 
   const handleAllTime = () => {
     setSelectedMonth(null);
-    setBookingPage(1);
-    setTxPage(1);
   };
 
   // Toggle Active/Inactive
@@ -420,180 +382,8 @@ export default function AdminVehicleDetailPage() {
     }
   };
 
-  // -------------------------------------------------------------
-  // Filtered & Paginated Bookings
-  // -------------------------------------------------------------
-  const filteredBookings = useMemo(() => {
-    return bookings.filter((b) => {
-      // 1. Month filter (if selected)
-      if (selectedMonth) {
-        const bStart = new Date(b.startDateTime);
-        const bEnd = new Date(b.endDateTime || b.startDateTime);
-        const monthStart = new Date(selectedMonth.getFullYear(), selectedMonth.getMonth(), 1, 0, 0, 0, 0);
-        const monthEnd = new Date(selectedMonth.getFullYear(), selectedMonth.getMonth() + 1, 0, 23, 59, 59, 999);
-        const overlaps = bStart <= monthEnd && bEnd >= monthStart;
-        if (!overlaps) return false;
-      }
 
-      // 2. Specific Date Range (From - To)
-      if (bookingFromDate) {
-        const fromTime = new Date(bookingFromDate).setHours(0, 0, 0, 0);
-        const bEndTime = new Date(b.endDateTime || b.startDateTime).getTime();
-        if (bEndTime < fromTime) return false;
-      }
-      if (bookingToDate) {
-        const toTime = new Date(bookingToDate).setHours(23, 59, 59, 999);
-        const bStartTime = new Date(b.startDateTime).getTime();
-        if (bStartTime > toTime) return false;
-      }
 
-      // 3. Search query
-      if (bookingSearch.trim()) {
-        const q = bookingSearch.toLowerCase();
-        const matches =
-          b.customerName.toLowerCase().includes(q) ||
-          b._id.toLowerCase().includes(q);
-        if (!matches) return false;
-      }
-
-      // 4. Status Filter
-      const status = getBookingStatus(b);
-      if (bookingFilter === "all") return true;
-      if (bookingFilter === "active") return status === "active";
-      if (bookingFilter === "upcoming") return status === "upcoming";
-      if (bookingFilter === "completed") return status === "completed";
-      if (bookingFilter === "cancelled") return b.isCancelled;
-      if (bookingFilter === "balance") return !b.isCancelled && b.balanceAmount > 0;
-      return true;
-    });
-  }, [bookings, selectedMonth, bookingFromDate, bookingToDate, bookingSearch, bookingFilter]);
-
-  // Bookings Metrics (Month-wise & Filter-wise)
-  const bookingMetrics = useMemo(() => {
-    const totalCount = filteredBookings.length;
-    const activeCount = filteredBookings.filter((b) => getBookingStatus(b) === "active").length;
-    const upcomingCount = filteredBookings.filter((b) => getBookingStatus(b) === "upcoming").length;
-    const completedCount = filteredBookings.filter((b) => getBookingStatus(b) === "completed").length;
-    const cancelledCount = filteredBookings.filter((b) => b.isCancelled).length;
-    const totalValue = filteredBookings
-      .filter((b) => !b.isCancelled)
-      .reduce((acc, b) => acc + (b.totalAmount || 0), 0);
-    const totalCollected = filteredBookings
-      .filter((b) => !b.isCancelled)
-      .reduce((acc, b) => acc + (b.paidAmount || 0), 0);
-    const totalPending = filteredBookings
-      .filter((b) => !b.isCancelled)
-      .reduce((acc, b) => acc + (b.balanceAmount || 0), 0);
-
-    return {
-      totalCount,
-      activeCount,
-      upcomingCount,
-      completedCount,
-      cancelledCount,
-      totalValue,
-      totalCollected,
-      totalPending,
-    };
-  }, [filteredBookings]);
-
-  // Bookings Pagination
-  const bookingTotalPages = Math.ceil(filteredBookings.length / bookingPageSize) || 1;
-  const paginatedBookings = useMemo(() => {
-    const start = (bookingPage - 1) * bookingPageSize;
-    return filteredBookings.slice(start, start + bookingPageSize);
-  }, [filteredBookings, bookingPage, bookingPageSize]);
-
-  // -------------------------------------------------------------
-  // Filtered & Paginated Wallet Transactions
-  // -------------------------------------------------------------
-  const filteredTransactions = useMemo(() => {
-    return transactions.filter((tx) => {
-      const txDate = new Date(tx.transactionDate || tx.createdAt);
-
-      // 1. Month filter (if selected)
-      if (selectedMonth) {
-        const inMonth =
-          txDate.getFullYear() === selectedMonth.getFullYear() &&
-          txDate.getMonth() === selectedMonth.getMonth();
-        if (!inMonth) return false;
-      }
-
-      // 2. Specific Date Range (From - To)
-      if (txFromDate) {
-        const fromTime = new Date(txFromDate).setHours(0, 0, 0, 0);
-        if (txDate.getTime() < fromTime) return false;
-      }
-      if (txToDate) {
-        const toTime = new Date(txToDate).setHours(23, 59, 59, 999);
-        if (txDate.getTime() > toTime) return false;
-      }
-
-      // 3. Search
-      if (txSearch.trim()) {
-        const q = txSearch.toLowerCase();
-        const matches =
-          (tx.note && tx.note.toLowerCase().includes(q)) ||
-          (tx.source && tx.source.toLowerCase().includes(q)) ||
-          tx._id.toLowerCase().includes(q);
-        if (!matches) return false;
-      }
-
-      // 4. Type filter
-      if (txFilter === "all") return true;
-      if (txFilter === "income") return tx.type === "income";
-      if (txFilter === "expense") return tx.type === "expense";
-      if (txFilter === "cash") return tx.paymentMethod === "cash";
-      if (txFilter === "bank") return tx.paymentMethod === "bank";
-      return true;
-    }).sort((a, b) => {
-      const dayA = (a.transactionDate || a.createdAt || "").split("T")[0];
-      const dayB = (b.transactionDate || b.createdAt || "").split("T")[0];
-      if (dayA && dayB && dayA !== dayB) return dayB.localeCompare(dayA);
-      const createdA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-      const createdB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-      if (createdA && createdB && createdA !== createdB) return createdB - createdA;
-      const dateA = a.transactionDate ? new Date(a.transactionDate).getTime() : 0;
-      const dateB = b.transactionDate ? new Date(b.transactionDate).getTime() : 0;
-      if (dateA !== dateB) return dateB - dateA;
-      return (b._id || "").localeCompare(a._id || "");
-    });
-  }, [transactions, selectedMonth, txFromDate, txToDate, txSearch, txFilter]);
-
-  // Wallet Metrics (Month-wise & Filter-wise)
-  const walletMetrics = useMemo(() => {
-    let totalIncome = 0;
-    let totalExpense = 0;
-    let cashIncome = 0;
-    let cashExpense = 0;
-    let bankIncome = 0;
-    let bankExpense = 0;
-
-    filteredTransactions.forEach((tx) => {
-      const amt = tx.amount || 0;
-      if (tx.type === "income") {
-        totalIncome += amt;
-        if (tx.paymentMethod === "cash") cashIncome += amt;
-        else bankIncome += amt;
-      } else {
-        totalExpense += amt;
-        if (tx.paymentMethod === "cash") cashExpense += amt;
-        else bankExpense += amt;
-      }
-    });
-
-    const netCashflow = totalIncome - totalExpense;
-    return {
-      totalIncome,
-      totalExpense,
-      netCashflow,
-      cashIncome,
-      cashExpense,
-      bankIncome,
-      bankExpense,
-      txCount: filteredTransactions.length,
-    };
-  }, [filteredTransactions]);
 
   // Comprehensive Overview KPI Metrics (Filtered by selectedMonth or Lifetime)
   const overviewMetrics = useMemo(() => {
@@ -691,12 +481,7 @@ export default function AdminVehicleDetailPage() {
     };
   }, [selectedMonth, transactions, locks, bookings]);
 
-  // Wallet Pagination
-  const txTotalPages = Math.ceil(filteredTransactions.length / txPageSize) || 1;
-  const paginatedTransactions = useMemo(() => {
-    const start = (txPage - 1) * txPageSize;
-    return filteredTransactions.slice(start, start + txPageSize);
-  }, [filteredTransactions, txPage, txPageSize]);
+
 
   if (loading) {
     return (
@@ -788,7 +573,7 @@ export default function AdminVehicleDetailPage() {
           <div className="lg:col-span-4 bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-950 p-6 flex flex-col justify-between relative overflow-hidden min-h-[260px]">
             {vehicle.imageUrl ? (
               <div className="relative w-full h-full min-h-[220px] rounded-2xl overflow-hidden border border-white/10 shadow-inner">
-                <Image
+                <SafeImage
                   src={vehicle.imageUrl}
                   alt={vehicle.name}
                   fill
@@ -1194,7 +979,7 @@ export default function AdminVehicleDetailPage() {
               activeTab === "bookings" ? "bg-indigo-700 text-white" : "bg-slate-100 text-slate-600"
             }`}
           >
-            {filteredBookings.length}
+            {bookings.length}
           </span>
         </button>
 
@@ -1213,7 +998,7 @@ export default function AdminVehicleDetailPage() {
               activeTab === "financials" ? "bg-indigo-700 text-white" : "bg-slate-100 text-slate-600"
             }`}
           >
-            {filteredTransactions.length}
+            {transactions.length}
           </span>
         </button>
 
@@ -1279,902 +1064,70 @@ export default function AdminVehicleDetailPage() {
 
       {/* TAB 1: OVERVIEW & SPECIFICATIONS */}
       {activeTab === "overview" && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Detailed Technical Specs Card */}
-          <div className="lg:col-span-2 bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-sm space-y-6">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
-                  <Sparkles className="w-4 h-4" />
-                </div>
-                <h3 className="text-base font-bold text-slate-900">Vehicle Specifications & Profile</h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsEditModalOpen(true)}
-                className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 cursor-pointer transition-colors"
-              >
-                <Edit className="w-3.5 h-3.5" />
-                Edit Specs
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-              <SpecItem label="Vehicle Name" value={vehicle.name} />
-              <SpecItem label="Plate Number" value={vehicle.plateNumber} mono />
-              <SpecItem label="Fuel Type" value={vehicle.fuelType || "Diesel"} />
-              <SpecItem label="Transmission" value={vehicle.transmission || "Manual"} />
-              <SpecItem label="Seating Capacity" value={`${vehicle.seatingCapacity || 5} Persons`} />
-              <SpecItem
-                label="System Status"
-                value={vehicle.isActive ? "Active (Operational)" : "Inactive (Deactivated)"}
-                valueClass={vehicle.isActive ? "text-emerald-600 font-bold" : "text-rose-600 font-bold"}
-              />
-              <SpecItem label="Registered On" value={formatFullDateTime(vehicle.createdAt)} />
-              <SpecItem label="Last Modified" value={formatFullDateTime(vehicle.updatedAt)} />
-              <SpecItem label="Concurrency Booking Version" value={`v${(vehicle as unknown as { bookingVersion?: number }).bookingVersion ?? 0}`} />
-              <SpecItem label="Database ID" value={vehicle._id} mono copyable onCopy={() => handleCopy(vehicle._id, "spec-id")} />
-            </div>
-
-            {/* Static Remarks / Notes */}
-            <div className="pt-4 border-t border-slate-100">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
-                Internal Administrative Remarks
-              </h4>
-              {vehicle.notes ? (
-                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 text-sm text-slate-700 leading-relaxed">
-                  {vehicle.notes}
-                </div>
-              ) : (
-                <p className="text-xs text-slate-400 italic">No administrative remarks noted.</p>
-              )}
-            </div>
-          </div>
-
-          {/* Authorized Co-Owners & Stakeholders */}
-          <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-sm space-y-6 flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-4">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
-                    <ShieldCheck className="w-4 h-4" />
-                  </div>
-                  <h3 className="text-base font-bold text-slate-900">Assigned Co-Owners</h3>
-                </div>
-                <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-100">
-                  {vehicle.ownerIds?.length || 0} Users
-                </span>
-              </div>
-
-              <p className="text-xs text-slate-500 mb-4">
-                These users have full manager permissions to view bookings, financial transactions, and availability for this vehicle.
-              </p>
-
-              <div className="space-y-3">
-                {vehicle.ownerIds && vehicle.ownerIds.length > 0 ? (
-                  vehicle.ownerIds.map((owner) => {
-                    const ownerId = typeof owner === "object" && owner?._id ? owner._id : String(owner);
-                    const username = typeof owner === "object" && owner?.username ? owner.username : "Owner";
-                    return (
-                      <div
-                        key={ownerId}
-                        className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm shadow-sm">
-                            {username.charAt(0).toUpperCase()}
-                          </div>
-                          <div>
-                            <p className="text-sm font-bold text-slate-800">{username}</p>
-                            <p className="text-[11px] font-mono text-slate-400">ID: {ownerId}</p>
-                          </div>
-                        </div>
-                        <button
-                          onClick={() => handleCopy(ownerId, `owner-${ownerId}`)}
-                          className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-200 rounded-lg transition-colors"
-                          title="Copy User ID"
-                        >
-                          {copiedField === `owner-${ownerId}` ? (
-                            <Check className="w-4 h-4 text-emerald-600" />
-                          ) : (
-                            <Copy className="w-4 h-4" />
-                          )}
-                        </button>
-                      </div>
-                    );
-                  })
-                ) : (
-                  <div className="text-center py-8 border-2 border-dashed border-slate-200 rounded-2xl">
-                    <User className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-                    <p className="text-xs text-slate-400 italic">No assigned owners yet.</p>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <Link
-              href={`/admin/vehicles/${vehicle._id}/edit`}
-              className="mt-6 w-full py-2.5 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-bold text-center block transition-colors"
-            >
-              Manage Assigned Owners
-            </Link>
-          </div>
-        </div>
+        <OverviewTab
+          vehicle={vehicle}
+          onEditSpecs={() => setIsEditModalOpen(true)}
+          onCopy={handleCopy}
+          copiedField={copiedField}
+        />
       )}
 
-      {/* TAB 2: BOOKINGS HISTORY & DATE-WISE / MONTH-WISE METRICS */}
+      {/* TAB 2: BOOKINGS HISTORY */}
       {activeTab === "bookings" && (
-        <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden p-4 sm:p-6 lg:p-8 space-y-6">
-          {/* Header & Controls */}
-          <div className="space-y-4 border-b border-slate-100 pb-5">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="text-base sm:text-lg font-bold text-slate-900">Vehicle Booking History</h3>
-                  <span className="px-2.5 py-0.5 rounded-full text-[10px] sm:text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-100">
-                    {selectedMonth ? formatMonthDisplay(selectedMonth) : "Full History"}
-                  </span>
-                </div>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Complete lifetime reservation logs with date range and status filters
-                </p>
-              </div>
-
-              {/* Search Bar */}
-              <div className="relative w-full sm:w-64">
-                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-                <input
-                  type="text"
-                  placeholder="Search customer name or ID..."
-                  value={bookingSearch}
-                  onChange={(e) => {
-                    setBookingSearch(e.target.value);
-                    setBookingPage(1);
-                  }}
-                  className="pl-9 pr-4 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 w-full"
-                />
-              </div>
-            </div>
-
-            {/* Quick Month Bar + Date Range + Status Filters */}
-            <div className="flex flex-wrap items-center justify-between gap-4 pt-2">
-              {/* Date Range Picker */}
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Date Range:</span>
-                <input
-                  type="date"
-                  value={bookingFromDate}
-                  onChange={(e) => {
-                    setBookingFromDate(e.target.value);
-                    setBookingPage(1);
-                  }}
-                  className="px-3 py-1.5 text-xs rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none"
-                  title="From Date"
-                />
-                <span className="text-xs text-slate-400">to</span>
-                <input
-                  type="date"
-                  value={bookingToDate}
-                  onChange={(e) => {
-                    setBookingToDate(e.target.value);
-                    setBookingPage(1);
-                  }}
-                  className="px-3 py-1.5 text-xs rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none"
-                  title="To Date"
-                />
-                {(bookingFromDate || bookingToDate) && (
-                  <button
-                    onClick={() => {
-                      setBookingFromDate("");
-                      setBookingToDate("");
-                      setBookingPage(1);
-                    }}
-                    className="px-2 py-1 text-xs text-rose-600 hover:bg-rose-50 rounded-lg font-semibold"
-                  >
-                    Clear Dates
-                  </button>
-                )}
-              </div>
-
-              {/* Status Tabs */}
-              <div className="flex flex-wrap items-center bg-slate-100 p-1 rounded-xl">
-                {["all", "active", "upcoming", "completed", "cancelled", "balance"].map((filter) => (
-                  <button
-                    key={filter}
-                    onClick={() => {
-                      setBookingFilter(filter);
-                      setBookingPage(1);
-                    }}
-                    className={`px-3 py-1 rounded-lg text-xs font-semibold capitalize transition-all ${
-                      bookingFilter === filter
-                        ? "bg-white text-slate-900 shadow-sm"
-                        : "text-slate-600 hover:text-slate-900"
-                    }`}
-                  >
-                    {filter === "balance" ? "Pending Due" : filter}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* Month / Filter-wise Financial Strip for Bookings */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-4 rounded-2xl bg-slate-50 border border-slate-200">
-            <div>
-              <p className="text-[11px] font-bold text-slate-400 uppercase">Filtered Count</p>
-              <p className="text-lg font-black text-slate-900">{bookingMetrics.totalCount} Trips</p>
-            </div>
-            <div>
-              <p className="text-[11px] font-bold text-slate-400 uppercase">Total Trip Value</p>
-              <p className="text-lg font-black text-indigo-600">{formatCurrency(bookingMetrics.totalValue)}</p>
-            </div>
-            <div>
-              <p className="text-[11px] font-bold text-slate-400 uppercase">Total Collected</p>
-              <p className="text-lg font-black text-emerald-600">{formatCurrency(bookingMetrics.totalCollected)}</p>
-            </div>
-            <div>
-              <p className="text-[11px] font-bold text-slate-400 uppercase">Remaining Due</p>
-              <p className="text-lg font-black text-rose-600">{formatCurrency(bookingMetrics.totalPending)}</p>
-            </div>
-          </div>
-
-          {/* Bookings Table */}
-          {paginatedBookings.length > 0 ? (
-            <div className="space-y-4">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="border-b border-slate-200 text-[11px] font-bold uppercase tracking-wider text-slate-400 bg-slate-50/50">
-                      <th className="py-3 px-4">Customer</th>
-                      <th className="py-3 px-4">Trip Schedule</th>
-                      <th className="py-3 px-4">Duration</th>
-                      <th className="py-3 px-4 text-right">Total Amount</th>
-                      <th className="py-3 px-4 text-right">Paid</th>
-                      <th className="py-3 px-4 text-right">Balance</th>
-                      <th className="py-3 px-4 text-center">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 text-xs">
-                    {paginatedBookings.map((b) => {
-                      const status = getBookingStatus(b);
-                      return (
-                        <tr key={b._id} className="hover:bg-slate-50/80 transition-colors">
-                          <td className="py-3.5 px-4">
-                            <p className="font-bold text-slate-900">{b.customerName}</p>
-                            <p className="font-mono text-[10px] text-slate-400">ID: {b._id.slice(0, 8)}...</p>
-                          </td>
-                          <td className="py-3.5 px-4 text-slate-700">
-                            <p className="font-medium">{formatDateTimeNice(b.startDateTime)}</p>
-                            <p className="text-slate-400 text-[11px]">to {formatDateTimeNice(b.endDateTime)}</p>
-                          </td>
-                          <td className="py-3.5 px-4 font-medium text-slate-600">
-                            {getBookingDurationLabel(b.startDateTime, b.endDateTime)}
-                          </td>
-                          <td className="py-3.5 px-4 text-right font-bold text-slate-900">
-                            {formatCurrency(b.totalAmount)}
-                          </td>
-                          <td className="py-3.5 px-4 text-right font-bold text-emerald-600">
-                            {formatCurrency(b.paidAmount)}
-                          </td>
-                          <td className="py-3.5 px-4 text-right font-bold">
-                            {b.balanceAmount > 0 ? (
-                              <span className="text-rose-600">{formatCurrency(b.balanceAmount)}</span>
-                            ) : (
-                              <span className="text-slate-400">₹0</span>
-                            )}
-                          </td>
-                          <td className="py-3.5 px-4 text-center">
-                            {b.isCancelled ? (
-                              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-100 text-rose-700">
-                                Cancelled
-                              </span>
-                            ) : status === "active" ? (
-                              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-indigo-100 text-indigo-700 animate-pulse">
-                                On Trip
-                              </span>
-                            ) : status === "upcoming" ? (
-                              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-100 text-amber-700">
-                                Upcoming
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-slate-100 text-slate-700">
-                                Completed
-                              </span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Bookings Pagination Footer */}
-              <div className="flex flex-wrap items-center justify-between gap-4 pt-4 border-t border-slate-100">
-                <div className="flex items-center gap-2 text-xs text-slate-500">
-                  <span>Show</span>
-                  <select
-                    value={bookingPageSize}
-                    onChange={(e) => {
-                      setBookingPageSize(Number(e.target.value));
-                      setBookingPage(1);
-                    }}
-                    className="px-2 py-1 rounded-lg border border-slate-200 bg-white font-medium text-slate-800"
-                  >
-                    <option value={10}>10 per page</option>
-                    <option value={20}>20 per page</option>
-                    <option value={50}>50 per page</option>
-                    <option value={100}>100 per page</option>
-                  </select>
-                  <span>
-                    Showing {Math.min((bookingPage - 1) * bookingPageSize + 1, filteredBookings.length)} to{" "}
-                    {Math.min(bookingPage * bookingPageSize, filteredBookings.length)} of {filteredBookings.length}
-                  </span>
-                </div>
-
-                <div className="flex items-center gap-1">
-                  <button
-                    onClick={() => setBookingPage(1)}
-                    disabled={bookingPage <= 1}
-                    className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 disabled:opacity-40"
-                    title="First Page"
-                  >
-                    <ChevronsLeft className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => setBookingPage((p) => Math.max(1, p - 1))}
-                    disabled={bookingPage <= 1}
-                    className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 disabled:opacity-40"
-                    title="Previous Page"
-                  >
-                    <ChevronLeft className="w-4 h-4" />
-                  </button>
-
-                  <span className="px-3 text-xs font-bold text-slate-700">
-                    Page {bookingPage} of {bookingTotalPages}
-                  </span>
-
-                  <button
-                    onClick={() => setBookingPage((p) => Math.min(bookingTotalPages, p + 1))}
-                    disabled={bookingPage >= bookingTotalPages}
-                    className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 disabled:opacity-40"
-                    title="Next Page"
-                  >
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => setBookingPage(bookingTotalPages)}
-                    disabled={bookingPage >= bookingTotalPages}
-                    className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 disabled:opacity-40"
-                    title="Last Page"
-                  >
-                    <ChevronsRight className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="text-center py-16 border-2 border-dashed border-slate-200 rounded-2xl">
-              <CalendarX2 className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-              <p className="text-sm font-bold text-slate-700">No bookings match the selected filters.</p>
-              <p className="text-xs text-slate-400 mt-1">
-                {selectedMonth
-                  ? `There are no bookings in ${formatMonthDisplay(selectedMonth)}. Click "All Months (Full History)" above to view all bookings.`
-                  : "Try clearing search or adjusting the date range."}
-              </p>
-              {selectedMonth && (
-                <button
-                  onClick={handleAllTime}
-                  className="mt-3 px-4 py-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-xl text-xs font-bold transition-colors inline-block"
-                >
-                  Show All Months (Full History)
-                </button>
-              )}
-            </div>
-          )}
-        </div>
+        <BookingsTab
+          bookings={bookings}
+          selectedMonth={selectedMonth}
+          onAllTime={handleAllTime}
+        />
       )}
 
       {/* TAB 3: FINANCIAL LEDGER & WALLET */}
       {activeTab === "financials" && (
-        <div className="space-y-6">
-          {/* Wallet Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-            <div className="bg-gradient-to-br from-indigo-900 to-indigo-950 text-white rounded-3xl p-6 shadow-md border border-indigo-800">
-              <p className="text-xs font-bold uppercase tracking-wider text-indigo-200">Total Net Balance</p>
-              <h3 className="text-3xl font-black mt-2">{formatCurrency(wallet?.totalBalance ?? 0)}</h3>
-              <p className="text-xs text-indigo-300 mt-2">Combined physical cash and bank funds</p>
-            </div>
-
-            <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-200">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Cash In Hand</p>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-100">
-                  Cash
-                </span>
-              </div>
-              <h3 className="text-3xl font-black text-emerald-600">{formatCurrency(wallet?.cashBalance ?? 0)}</h3>
-              <p className="text-xs text-slate-400 mt-2">Liquid physical cash balance</p>
-            </div>
-
-            <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-200">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Bank Account</p>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-100">
-                  Bank Transfer
-                </span>
-              </div>
-              <h3 className="text-3xl font-black text-blue-600">{formatCurrency(wallet?.bankBalance ?? 0)}</h3>
-              <p className="text-xs text-slate-400 mt-2">Digital bank transfer balance</p>
-            </div>
-          </div>
-
-          {/* Transactions Ledger Card */}
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-4 sm:p-6 lg:p-8 space-y-6">
-            {/* Header & Controls */}
-            <div className="space-y-4 border-b border-slate-100 pb-5">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div>
-                  <h3 className="text-base sm:text-lg font-bold text-slate-900">Wallet Financial Ledger</h3>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Month-wise and date-wise audit log of all income and expense transactions
-                  </p>
-                </div>
-
-                {/* Search */}
-                <div className="relative w-full sm:w-60">
-                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-                  <input
-                    type="text"
-                    placeholder="Search notes or source..."
-                    value={txSearch}
-                    onChange={(e) => {
-                      setTxSearch(e.target.value);
-                      setTxPage(1);
-                    }}
-                    className="pl-9 pr-4 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 w-full"
-                  />
-                </div>
-              </div>
-
-              {/* Date & Type Filters */}
-              <div className="flex flex-wrap items-center justify-between gap-4 pt-2">
-                {/* Date Range */}
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Date Range:</span>
-                  <input
-                    type="date"
-                    value={txFromDate}
-                    onChange={(e) => {
-                      setTxFromDate(e.target.value);
-                      setTxPage(1);
-                    }}
-                    className="px-3 py-1.5 text-xs rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none"
-                    title="From Date"
-                  />
-                  <span className="text-xs text-slate-400">to</span>
-                  <input
-                    type="date"
-                    value={txToDate}
-                    onChange={(e) => {
-                      setTxToDate(e.target.value);
-                      setTxPage(1);
-                    }}
-                    className="px-3 py-1.5 text-xs rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none"
-                    title="To Date"
-                  />
-                  {(txFromDate || txToDate) && (
-                    <button
-                      onClick={() => {
-                        setTxFromDate("");
-                        setTxToDate("");
-                        setTxPage(1);
-                      }}
-                      className="px-2 py-1 text-xs text-rose-600 hover:bg-rose-50 rounded-lg font-semibold"
-                    >
-                      Clear Dates
-                    </button>
-                  )}
-                </div>
-
-                {/* Method / Type Filters */}
-                <div className="flex flex-wrap items-center bg-slate-100 p-1 rounded-xl">
-                  {["all", "income", "expense", "cash", "bank"].map((filter) => (
-                    <button
-                      key={filter}
-                      onClick={() => {
-                        setTxFilter(filter);
-                        setTxPage(1);
-                      }}
-                      className={`px-3 py-1 rounded-lg text-xs font-semibold capitalize transition-all ${
-                        txFilter === filter
-                          ? "bg-white text-slate-900 shadow-sm"
-                          : "text-slate-600 hover:text-slate-900"
-                      }`}
-                    >
-                      {filter}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Filtered Financial Metrics Strip */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-4 rounded-2xl bg-slate-50 border border-slate-200">
-              <div>
-                <p className="text-[11px] font-bold text-slate-400 uppercase">Filtered Transactions</p>
-                <p className="text-lg font-black text-slate-900">{walletMetrics.txCount} Records</p>
-              </div>
-              <div>
-                <p className="text-[11px] font-bold text-slate-400 uppercase">Total Inflow</p>
-                <p className="text-lg font-black text-emerald-600">+{formatCurrency(walletMetrics.totalIncome)}</p>
-              </div>
-              <div>
-                <p className="text-[11px] font-bold text-slate-400 uppercase">Total Outflow</p>
-                <p className="text-lg font-black text-rose-600">-{formatCurrency(walletMetrics.totalExpense)}</p>
-              </div>
-              <div>
-                <p className="text-[11px] font-bold text-slate-400 uppercase">Period Net Flow</p>
-                <p
-                  className={`text-lg font-black ${
-                    walletMetrics.netCashflow >= 0 ? "text-slate-900" : "text-rose-600"
-                  }`}
-                >
-                  {formatCurrency(walletMetrics.netCashflow)}
-                </p>
-              </div>
-            </div>
-
-            {/* Transactions Table */}
-            {paginatedTransactions.length > 0 ? (
-              <div className="space-y-4">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="border-b border-slate-200 text-[11px] font-bold uppercase tracking-wider text-slate-400 bg-slate-50/50">
-                        <th className="py-3 px-4">Date & Time</th>
-                        <th className="py-3 px-4">Description / Note</th>
-                        <th className="py-3 px-4">Source</th>
-                        <th className="py-3 px-4">Method</th>
-                        <th className="py-3 px-4 text-right">Amount</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 text-xs">
-                      {paginatedTransactions.map((tx) => (
-                        <tr key={tx._id} className="hover:bg-slate-50/80 transition-colors">
-                          <td className="py-3.5 px-4 font-medium text-slate-700">
-                            {formatDateTimeNice(tx.transactionDate || tx.createdAt)}
-                          </td>
-                          <td className="py-3.5 px-4">
-                            <p className="font-bold text-slate-900">{tx.note || "No note"}</p>
-                            <p className="font-mono text-[10px] text-slate-400">ID: {tx._id.slice(0, 8)}...</p>
-                          </td>
-                          <td className="py-3.5 px-4">
-                            <span className="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 font-semibold uppercase text-[10px]">
-                              {tx.source || "manual"}
-                            </span>
-                          </td>
-                          <td className="py-3.5 px-4">
-                            <span
-                              className={`px-2.5 py-1 rounded-lg font-bold text-[10px] uppercase ${
-                                tx.paymentMethod === "cash"
-                                  ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                                  : "bg-blue-50 text-blue-700 border border-blue-200"
-                              }`}
-                            >
-                              {tx.paymentMethod}
-                            </span>
-                          </td>
-                          <td
-                            className={`py-3.5 px-4 text-right font-black text-sm ${
-                              tx.type === "income" ? "text-emerald-600" : "text-rose-600"
-                            }`}
-                          >
-                            {tx.type === "income" ? "+" : "-"}
-                            {formatCurrency(tx.amount)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Wallet Pagination Footer */}
-                <div className="flex flex-wrap items-center justify-between gap-4 pt-4 border-t border-slate-100">
-                  <div className="flex items-center gap-2 text-xs text-slate-500">
-                    <span>Show</span>
-                    <select
-                      value={txPageSize}
-                      onChange={(e) => {
-                        setTxPageSize(Number(e.target.value));
-                        setTxPage(1);
-                      }}
-                      className="px-2 py-1 rounded-lg border border-slate-200 bg-white font-medium text-slate-800"
-                    >
-                      <option value={10}>10 per page</option>
-                      <option value={20}>20 per page</option>
-                      <option value={50}>50 per page</option>
-                      <option value={100}>100 per page</option>
-                    </select>
-                    <span>
-                      Showing {Math.min((txPage - 1) * txPageSize + 1, filteredTransactions.length)} to{" "}
-                      {Math.min(txPage * txPageSize, filteredTransactions.length)} of {filteredTransactions.length}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => setTxPage(1)}
-                      disabled={txPage <= 1}
-                      className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 disabled:opacity-40"
-                      title="First Page"
-                    >
-                      <ChevronsLeft className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => setTxPage((p) => Math.max(1, p - 1))}
-                      disabled={txPage <= 1}
-                      className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 disabled:opacity-40"
-                      title="Previous Page"
-                    >
-                      <ChevronLeft className="w-4 h-4" />
-                    </button>
-
-                    <span className="px-3 text-xs font-bold text-slate-700">
-                      Page {txPage} of {txTotalPages}
-                    </span>
-
-                    <button
-                      onClick={() => setTxPage((p) => Math.min(txTotalPages, p + 1))}
-                      disabled={txPage >= txTotalPages}
-                      className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 disabled:opacity-40"
-                      title="Next Page"
-                    >
-                      <ChevronRight className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => setTxPage(txTotalPages)}
-                      disabled={txPage >= txTotalPages}
-                      className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 disabled:opacity-40"
-                      title="Last Page"
-                    >
-                      <ChevronsRight className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="text-center py-16 border-2 border-dashed border-slate-200 rounded-2xl">
-                <Wallet className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-                <p className="text-sm font-bold text-slate-700">No transactions recorded for the selected filter.</p>
-                <p className="text-xs text-slate-400 mt-1">
-                  {selectedMonth
-                    ? `No transactions recorded in ${formatMonthDisplay(selectedMonth)}. Click "All Months (Full History)" above to view all records.`
-                    : "Try adjusting the date range or search filters."}
-                </p>
-                {selectedMonth && (
-                  <button
-                    onClick={handleAllTime}
-                    className="mt-3 px-4 py-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-xl text-xs font-bold transition-colors inline-block"
-                  >
-                    Show All Months (Full History)
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
+        <FinancialsTab
+          wallet={wallet}
+          transactions={transactions}
+          selectedMonth={selectedMonth}
+          onAllTime={handleAllTime}
+        />
       )}
 
       {/* TAB 4: MAINTENANCE & LOCKS */}
       {activeTab === "locks" && (
-        <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 sm:p-8 space-y-6">
-          <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 pb-4">
-            <div>
-              <h3 className="text-lg font-bold text-slate-900">Vehicle Maintenance & Locks</h3>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Block off vehicle availability for repairs, personal use, or dealer holds
-              </p>
-            </div>
-
-            <button
-              onClick={() => {
-                setShowAddLockModal(true);
-                setLockError("");
-              }}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition-all shadow-sm"
-            >
-              <Plus className="w-4 h-4" />
-              Add Maintenance Lock
-            </button>
-          </div>
-
-          {locks.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {locks.map((lock) => (
-                <div
-                  key={lock._id}
-                  className="p-5 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col justify-between space-y-4"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
-                        <Lock className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <h4 className="font-bold text-slate-900 text-sm">{lock.reason}</h4>
-                        <p className="text-xs text-slate-500 mt-0.5">
-                          {formatDateTimeNice(lock.startDate)} → {formatDateTimeNice(lock.endDate)}
-                        </p>
-                      </div>
-                    </div>
-
-                    <button
-                      onClick={() => handleDeleteLock(lock._id)}
-                      disabled={deletingLockId === lock._id}
-                      className="p-2 text-rose-500 hover:bg-rose-50 rounded-xl transition-colors disabled:opacity-50"
-                      title="Release Lock"
-                    >
-                      {deletingLockId === lock._id ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <Trash2 className="w-4 h-4" />
-                      )}
-                    </button>
-                  </div>
-
-                  <div className="pt-3 border-t border-slate-200/80 flex items-center justify-between text-[11px] text-slate-400">
-                    <span>Created: {formatDateNice(lock.createdAt)}</span>
-                    <span>Lock ID: {lock._id.slice(0, 8)}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-16 border-2 border-dashed border-slate-200 rounded-2xl">
-              <Unlock className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-              <p className="text-sm font-bold text-slate-700">No active maintenance locks.</p>
-              <p className="text-xs text-slate-400 mt-1">
-                Vehicle is not blocked for maintenance or personal holds.
-              </p>
-            </div>
-          )}
-        </div>
+        <LocksTab
+          locks={locks}
+          onAddLock={() => {
+            setShowAddLockModal(true);
+            setLockError("");
+          }}
+          onDeleteLock={handleDeleteLock}
+          deletingLockId={deletingLockId}
+        />
       )}
 
       {/* TAB 5: OPERATIONAL NOTES */}
       {activeTab === "notes" && (
-        <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 sm:p-8 space-y-6">
-          <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 pb-4">
-            <div>
-              <h3 className="text-lg font-bold text-slate-900">Operational Notes & Handover Log</h3>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Keep track of maintenance rules, spare keys, FASTag info, and handover procedures
-              </p>
-            </div>
-
-            <button
-              onClick={() => {
-                setShowAddNoteModal(true);
-                setNoteError("");
-              }}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition-all shadow-sm"
-            >
-              <Plus className="w-4 h-4" />
-              Add Note
-            </button>
-          </div>
-
-          {vehicle.operationalNotes && vehicle.operationalNotes.length > 0 ? (
-            <div className="space-y-3">
-              {vehicle.operationalNotes.map((note) => (
-                <div
-                  key={note._id}
-                  className="p-5 rounded-2xl bg-slate-50 border border-slate-200 flex items-start justify-between gap-4"
-                >
-                  <div className="space-y-2">
-                    <p className="text-sm text-slate-800 leading-relaxed font-medium">{note.text}</p>
-                    <div className="flex items-center gap-3 text-xs text-slate-400">
-                      <span>Posted on {formatFullDateTime(note.createdAt)}</span>
-                      {note.createdBy?.username && (
-                        <>
-                          <span>•</span>
-                          <span className="font-semibold text-slate-600">By {note.createdBy.username}</span>
-                        </>
-                      )}
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={() => handleDeleteNote(note._id)}
-                    disabled={deletingNoteId === note._id}
-                    className="p-2 text-rose-500 hover:bg-rose-50 rounded-xl transition-colors disabled:opacity-50 shrink-0"
-                    title="Delete Note"
-                  >
-                    {deletingNoteId === note._id ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <Trash2 className="w-4 h-4" />
-                    )}
-                  </button>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-16 border-2 border-dashed border-slate-200 rounded-2xl">
-              <FileText className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-              <p className="text-sm font-bold text-slate-700">No operational notes posted yet.</p>
-              <p className="text-xs text-slate-400 mt-1">
-                Add notes to keep staff and co-owners aligned on operational rules.
-              </p>
-            </div>
-          )}
-        </div>
+        <NotesTab
+          operationalNotes={vehicle.operationalNotes}
+          onAddNote={() => {
+            setShowAddNoteModal(true);
+            setNoteError("");
+          }}
+          onDeleteNote={handleDeleteNote}
+          deletingNoteId={deletingNoteId}
+        />
       )}
 
       {/* TAB 6: ASSOCIATED DEALERS */}
       {activeTab === "dealers" && (
-        <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 sm:p-8 space-y-6">
-          <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 pb-4">
-            <div>
-              <h3 className="text-lg font-bold text-slate-900">Associated Dealer Presets</h3>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Dealers and rental partners configured for fast booking allocation & lock presets
-              </p>
-            </div>
-
-            <button
-              onClick={() => {
-                setShowAddDealerModal(true);
-                setDealerError("");
-              }}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition-all shadow-sm"
-            >
-              <Plus className="w-4 h-4" />
-              Add Dealer Preset
-            </button>
-          </div>
-
-          {dealers.length > 0 ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-              {dealers.map((dealer) => (
-                <div
-                  key={dealer._id}
-                  className="p-5 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-sm">
-                      <Building2 className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <h4 className="font-bold text-slate-900 text-sm">{dealer.name}</h4>
-                      <p className="text-[10px] font-mono text-slate-400">ID: {dealer._id.slice(0, 8)}</p>
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={() => handleDeleteDealer(dealer._id)}
-                    disabled={deletingDealerId === dealer._id}
-                    className="p-2 text-rose-500 hover:bg-rose-50 rounded-xl transition-colors disabled:opacity-50"
-                    title="Delete Dealer"
-                  >
-                    {deletingDealerId === dealer._id ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <Trash2 className="w-4 h-4" />
-                    )}
-                  </button>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-16 border-2 border-dashed border-slate-200 rounded-2xl">
-              <Building2 className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-              <p className="text-sm font-bold text-slate-700">No dealers configured.</p>
-              <p className="text-xs text-slate-400 mt-1">Add dealer presets for quick lock assignment.</p>
-            </div>
-          )}
-        </div>
+        <DealersTab
+          dealers={dealers}
+          onAddDealer={() => {
+            setShowAddDealerModal(true);
+            setDealerError("");
+          }}
+          onDeleteDealer={handleDeleteDealer}
+          deletingDealerId={deletingDealerId}
+        />
       )}
 
       {/* --- MODALS --- */}
@@ -2391,39 +1344,3 @@ export default function AdminVehicleDetailPage() {
   );
 }
 
-// Helper SpecItem Component
-function SpecItem({
-  label,
-  value,
-  mono = false,
-  valueClass = "text-slate-900",
-  copyable = false,
-  onCopy,
-}: {
-  label: string;
-  value: string;
-  mono?: boolean;
-  valueClass?: string;
-  copyable?: boolean;
-  onCopy?: () => void;
-}) {
-  return (
-    <div className="flex flex-col">
-      <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">{label}</span>
-      <div className="flex items-center gap-2">
-        <span className={`text-sm font-semibold ${valueClass} ${mono ? "font-mono text-xs" : ""}`}>
-          {value}
-        </span>
-        {copyable && onCopy && (
-          <button
-            onClick={onCopy}
-            className="p-1 text-slate-400 hover:text-slate-700 transition-colors"
-            title={`Copy ${label}`}
-          >
-            <Copy className="w-3.5 h-3.5" />
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
