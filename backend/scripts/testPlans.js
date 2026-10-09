@@ -24,7 +24,10 @@ async function testPlans() {
 
   const winningStage = overlapPlan.queryPlanner.winningPlan;
   console.log('Winning Plan Stage:', winningStage.stage);
-  console.log('Index Used:', JSON.stringify(winningStage).match(/"indexName":"([^"]+)"/)?.[1] || 'None');
+  console.log(
+    'Index Used:',
+    JSON.stringify(winningStage).match(/"indexName":"([^"]+)"/)?.[1] || 'None'
+  );
 
   console.log('\n--- 2. Admin Global Booking List Sort Explain ---');
   const adminListPlan = await Booking.find({})
@@ -36,7 +39,10 @@ async function testPlans() {
   console.log('Winning Plan Stage:', adminStage.stage);
   const hasInMemorySort = JSON.stringify(adminStage).includes('"stage":"SORT"');
   console.log('Has In-Memory SORT Stage?', hasInMemorySort);
-  console.log('Index Used in Plan:', JSON.stringify(adminStage).match(/"indexName":"([^"]+)"/)?.[1] || 'None');
+  console.log(
+    'Index Used in Plan:',
+    JSON.stringify(adminStage).match(/"indexName":"([^"]+)"/)?.[1] || 'None'
+  );
 
   console.log('\n--- 3. Monthly Wallet Transaction Sort Explain ---');
   const walletPlan = await WalletTransaction.find({
@@ -49,7 +55,10 @@ async function testPlans() {
   console.log('Winning Plan Stage:', walletStage.stage);
   const walletHasInMemorySort = JSON.stringify(walletStage).includes('"stage":"SORT"');
   console.log('Has In-Memory SORT Stage?', walletHasInMemorySort);
-  console.log('Index Used in Plan:', JSON.stringify(walletStage).match(/"indexName":"([^"]+)"/)?.[1] || 'None');
+  console.log(
+    'Index Used in Plan:',
+    JSON.stringify(walletStage).match(/"indexName":"([^"]+)"/)?.[1] || 'None'
+  );
 
   console.log('\n--- 4. Dealer Collation Exact Lookup Explain ---');
   const dealerPlan = await Dealer.find({
@@ -61,7 +70,10 @@ async function testPlans() {
 
   const dealerStage = dealerPlan.queryPlanner.winningPlan;
   console.log('Winning Plan Stage:', dealerStage.stage);
-  console.log('Index Used in Plan:', JSON.stringify(dealerStage).match(/"indexName":"([^"]+)"/)?.[1] || 'None');
+  console.log(
+    'Index Used in Plan:',
+    JSON.stringify(dealerStage).match(/"indexName":"([^"]+)"/)?.[1] || 'None'
+  );
 
   await mongoose.disconnect();
 }
