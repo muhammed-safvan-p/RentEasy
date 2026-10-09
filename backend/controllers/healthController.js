@@ -11,4 +11,3 @@ const checkHealth = (req, res) => {
 };
 
 module.exports = { checkHealth };
-
