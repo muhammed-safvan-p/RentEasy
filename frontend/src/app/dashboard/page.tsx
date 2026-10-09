@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import Image from "next/image";
+import { SafeImage } from "@/components/common/SafeImage";
 import {
   Car,
   AlertCircle,
@@ -50,7 +50,7 @@ function VehicleThumbnail({
   if (imageUrl && !imageError) {
     return (
       <div className={containerClasses}>
-        <Image
+        <SafeImage
           src={imageUrl}
           alt={name}
           fill
@@ -79,7 +79,6 @@ export default function DashboardPage() {
   const { user, isLoading: userLoading, error: userError } = useCurrentUser();
   const { vehicles, isLoading: vehiclesLoading, error: vehiclesError } = useUserVehicles();
 
-  const [showContactModal, setShowContactModal] = useState(false);
   const [blockedVehicleModal, setBlockedVehicleModal] = useState<GarageVehicle | null>(null);
   const [copied, setCopied] = useState(false);
 
@@ -144,13 +143,13 @@ export default function DashboardPage() {
             <p className="text-sm text-slate-400 mt-1">Manage your vehicles</p>
           </div>
           <div className="flex items-center gap-3">
-            <button
-              onClick={() => setShowContactModal(true)}
+            <Link
+              href="/dashboard/add-vehicle"
               className="w-10 h-10 rounded-full bg-[#1a1a2e] border border-white/10 flex items-center justify-center text-slate-300 hover:text-white hover:bg-[#2a2a46] transition-colors"
               aria-label="Add Vehicle"
             >
               <Plus className="w-5 h-5" />
-            </button>
+            </Link>
             <Link href="/profile">
               <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 p-[2px] cursor-pointer hover:scale-105 transition-transform shadow-lg shadow-indigo-500/20">
                 <div className="w-full h-full rounded-full bg-[#12121f] flex items-center justify-center">
@@ -186,9 +185,16 @@ export default function DashboardPage() {
               <Car className="w-8 h-8 text-indigo-400" />
             </div>
             <h3 className="text-lg font-semibold text-white mb-2">No vehicles found</h3>
-            <p className="text-sm text-slate-400 max-w-[250px]">
+            <p className="text-sm text-slate-400 max-w-[250px] mb-6">
               You don&apos;t have any vehicles assigned to your account yet.
             </p>
+            <Link
+              href="/dashboard/add-vehicle"
+              className="btn-primary px-5 py-2.5 rounded-xl text-sm font-semibold flex items-center gap-2"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Add Your First Vehicle</span>
+            </Link>
           </div>
         ) : (
           <div className="flex flex-col gap-5">
@@ -460,50 +466,6 @@ export default function DashboardPage() {
                 Close
               </button>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* Add Vehicle Contact Modal */}
-      {showContactModal && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center px-4 bg-black/60 backdrop-blur-sm">
-          <div className="bg-[#12121f] rounded-3xl p-6 w-full max-w-sm border border-white/10 shadow-2xl relative">
-            <button
-              onClick={() => setShowContactModal(false)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-white"
-            >
-              <X className="w-5 h-5" />
-            </button>
-            <h3 className="text-xl font-bold text-white mb-2">Add New Vehicle</h3>
-            <p className="text-slate-400 text-sm mb-6 leading-relaxed">
-              For Adding new vehicle Contact the Developer:
-            </p>
-            <div className="bg-[#0f0f20] rounded-xl p-4 border border-white/5 space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-slate-500">Name</span>
-                <span className="text-sm font-medium text-white">muhammed safvan</span>
-              </div>
-              <div
-                className="flex items-center justify-between cursor-pointer active:scale-[0.98] transition-transform"
-                onClick={() => handleCopyPhone("9496432072")}
-              >
-                <span className="text-sm text-slate-500">Phone</span>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-white">9496432072</span>
-                  {copied ? (
-                    <Check className="w-4 h-4 text-emerald-400" />
-                  ) : (
-                    <Copy className="w-4 h-4 text-indigo-400" />
-                  )}
-                </div>
-              </div>
-            </div>
-            <button
-              onClick={() => setShowContactModal(false)}
-              className="w-full mt-6 btn-primary rounded-xl py-2.5 text-sm font-semibold text-white"
-            >
-              Understood
-            </button>
           </div>
         </div>
       )}

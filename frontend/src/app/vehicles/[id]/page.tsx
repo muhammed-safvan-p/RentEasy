@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import Image from "next/image";
+import { SafeImage } from "@/components/common/SafeImage";
 import {
   ArrowLeft,
   Wallet as WalletIcon,
@@ -575,7 +575,7 @@ export default function VehicleDetailPage() {
             <div className="flex items-center gap-3.5">
               <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-gradient-to-br from-indigo-500/20 to-purple-500/10 border border-indigo-500/25 flex items-center justify-center text-indigo-400 shadow-sm shrink-0 overflow-hidden relative">
                 {vehicle?.imageUrl ? (
-                  <Image src={vehicle.imageUrl} alt={vehicle.name} width={80} height={80} className="w-full h-full object-cover" />
+                  <SafeImage src={vehicle.imageUrl} alt={vehicle.name} width={80} height={80} className="w-full h-full object-cover" />
                 ) : (
                   <Car className="w-6 h-6 sm:w-7 sm:h-7" />
                 )}
