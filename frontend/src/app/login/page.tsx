@@ -3,13 +3,15 @@
 import { useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { ShieldAlert, PhoneCall, AlertCircle, Eye, EyeOff } from "lucide-react";
+import { ShieldAlert, PhoneCall, AlertCircle, Eye, EyeOff, Zap, Loader2 } from "lucide-react";
 import { api, setAuthToken } from "@/lib/api";
+import { useActionColdStart } from "@/lib/serverStatus";
 
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const wasBlockedParam = searchParams.get("blocked") === "true";
+  const wasExpiredParam = searchParams.get("expired") === "true";
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -17,6 +19,7 @@ function LoginForm() {
   const [error, setError] = useState("");
   const [isBlockedError, setIsBlockedError] = useState(wasBlockedParam);
   const [loading, setLoading] = useState(false);
+  const { isSlow, seconds } = useActionColdStart(loading);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -116,6 +119,23 @@ function LoginForm() {
           </div>
         )}
 
+        {/* Dedicated Session Expired Banner */}
+        {wasExpiredParam && !isBlockedError && (
+          <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-300 animate-in fade-in slide-in-from-top-2 duration-300">
+            <div className="flex items-start gap-3">
+              <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0 mt-0.5">
+                <AlertCircle className="w-4.5 h-4.5" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-sm font-bold text-amber-200">Session Expired</h3>
+                <p className="text-xs text-amber-300/90 leading-relaxed">
+                  Your session has timed out. Please sign in again to continue.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         <form className="space-y-5" onSubmit={handleLogin}>
           <div>
             <label className="block text-sm font-medium leading-6 text-slate-300">Username</label>
@@ -163,10 +183,34 @@ function LoginForm() {
             <button
               type="submit"
               disabled={loading}
-              className="flex w-full justify-center rounded-xl btn-primary px-3 py-3 text-sm font-semibold text-white shadow-sm disabled:opacity-50 transition-all cursor-pointer"
+              className={`flex w-full items-center justify-center gap-2 rounded-xl px-3 py-3 text-sm font-semibold text-white shadow-sm disabled:opacity-75 transition-all cursor-pointer ${
+                isSlow
+                  ? "bg-gradient-to-r from-amber-600 to-indigo-600 hover:from-amber-500 hover:to-indigo-500 shadow-amber-500/20"
+                  : "btn-primary"
+              }`}
             >
-              {loading ? "Signing in..." : "Sign In"}
+              {loading ? (
+                isSlow ? (
+                  <>
+                    <Zap className="w-4 h-4 animate-bounce text-amber-300" />
+                    <span>Waking up cloud server... ({seconds}s)</span>
+                  </>
+                ) : (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin text-white" />
+                    <span>Signing in...</span>
+                  </>
+                )
+              ) : (
+                "Sign In"
+              )}
             </button>
+
+            {loading && isSlow && (
+              <p className="mt-2.5 text-center text-[11px] text-amber-300/90 leading-relaxed animate-in fade-in">
+                Render free tier is spinning up the server container (~30s). Please don&apos;t refresh.
+              </p>
+            )}
           </div>
         </form>
 

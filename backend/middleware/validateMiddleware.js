@@ -22,6 +22,7 @@ const validate = (schemaOrMap, defaultSource = 'body') => {
     }
 
     const errors = [];
+    const fieldErrors = {};
 
     for (const [source, schema] of Object.entries(validationTargets)) {
       if (!schema || typeof schema.validate !== 'function') continue;
@@ -34,7 +35,13 @@ const validate = (schemaOrMap, defaultSource = 'body') => {
 
       if (error) {
         error.details.forEach((detail) => {
-          errors.push(detail.message.replace(/['"]/g, ''));
+          const cleanMsg = detail.message.replace(/['"]/g, '');
+          errors.push(cleanMsg);
+          const fieldKey =
+            detail.path && detail.path.length > 0 ? detail.path[detail.path.length - 1] : 'general';
+          if (!fieldErrors[fieldKey]) {
+            fieldErrors[fieldKey] = cleanMsg;
+          }
         });
       } else {
         // Assign validated and sanitized values (except req.query in Express 5 which is a getter)
@@ -53,7 +60,9 @@ const validate = (schemaOrMap, defaultSource = 'body') => {
     }
 
     if (errors.length > 0) {
-      return next(new AppError(`Validation error: ${errors.join('. ')}`, 400));
+      const appError = new AppError(errors.join('. '), 400);
+      appError.details = fieldErrors;
+      return next(appError);
     }
 
     next();

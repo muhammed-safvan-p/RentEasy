@@ -4,18 +4,20 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { api, setAuthToken } from "@/lib/api";
+import { validatePhoneNumber, normalizePhoneNumber } from "@/lib/phoneValidation";
+import { useActionColdStart } from "@/lib/serverStatus";
 
 function validateUsername(value: string): string {
   if (!value) return "";
   if (!/^[a-zA-Z0-9_]+$/.test(value)) return "Letters, numbers, and underscores only";
-  if (value.length < 3) return `Username must be at least 3 characters`;
+  if (value.length < 3) return "Username must be at least 3 characters";
   if (value.length > 30) return "Username cannot exceed 30 characters";
   return "";
 }
 
 function validatePassword(value: string): string {
   if (!value) return "";
-  if (value.length < 6) return `Password must be at least 6 characters`;
+  if (value.length < 6) return "Password must be at least 6 characters";
   if (value.length > 128) return "Password cannot exceed 128 characters";
   return "";
 }
@@ -24,11 +26,14 @@ export default function SignupPage() {
   const router = useRouter();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [phone, setPhone] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [usernameError, setUsernameError] = useState("");
   const [passwordError, setPasswordError] = useState("");
+  const [phoneError, setPhoneError] = useState("");
   const [serverError, setServerError] = useState("");
   const [loading, setLoading] = useState(false);
+  const { isSlow, seconds } = useActionColdStart(loading);
 
   const handleUsernameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
@@ -44,14 +49,29 @@ export default function SignupPage() {
     setServerError("");
   };
 
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setPhone(val);
+    if (!val) {
+      setPhoneError("");
+    } else if (val.length === 10) {
+      setPhoneError(validatePhoneNumber(val));
+    } else {
+      setPhoneError("");
+    }
+    setServerError("");
+  };
+
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    const uErr = validateUsername(username);
-    const pErr = validatePassword(password);
+    const uErr = !username ? "Username is required" : "";
+    const pErr = !password ? "Password is required" : "";
+    const phErr = validatePhoneNumber(phone);
     setUsernameError(uErr);
     setPasswordError(pErr);
-    if (uErr || pErr) return;
+    setPhoneError(phErr);
+    if (uErr || pErr || phErr) return;
 
     setServerError("");
     setLoading(true);
@@ -60,6 +80,7 @@ export default function SignupPage() {
       const data = await api.post<{ role?: string; token?: string; message?: string }>("/api/auth/signup", {
         username,
         password,
+        phone: normalizePhoneNumber(phone),
       });
 
       // Dual-layer session token persistence (localStorage + cookie) for cross-domain and mobile support
@@ -70,13 +91,20 @@ export default function SignupPage() {
       router.push("/dashboard");
       router.refresh();
     } catch (err: unknown) {
-      setServerError(err instanceof Error ? err.message : "Failed to sign up");
+      const message = err instanceof Error ? err.message : "Failed to sign up";
+      if (message.toLowerCase().includes("phone")) {
+        setPhoneError(message);
+      } else if (message.toLowerCase().includes("username")) {
+        setUsernameError(message);
+      } else {
+        setServerError(message);
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  const isFormValid = username && password && !usernameError && !passwordError;
+  const isFormValid = username && password && phone && !usernameError && !passwordError && !phoneError;
 
   return (
     <div className="flex min-h-screen flex-col justify-center px-6 py-12 lg:px-8 relative overflow-hidden">
@@ -135,6 +163,44 @@ export default function SignupPage() {
               <p className="mt-1.5 text-xs text-emerald-400 flex items-center gap-1">
                 <svg className="shrink-0" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
                 Looks good!
+              </p>
+            )}
+          </div>
+
+          {/* Phone Number */}
+          <div>
+            <label className="block text-sm font-medium leading-6 text-slate-300">
+              Phone Number
+            </label>
+            <div className="mt-2">
+              <input
+                id="signup-phone"
+                type="tel"
+                inputMode="numeric"
+                maxLength={10}
+                required
+                value={phone}
+                onChange={handlePhoneChange}
+                className={`block w-full rounded-xl border-0 bg-[#0f0f20] py-3 px-4 text-white shadow-sm ring-1 ring-inset placeholder:text-slate-500 focus:ring-2 focus:ring-inset sm:text-sm sm:leading-6 transition-all ${
+                  phoneError
+                    ? "ring-rose-500/70 focus:ring-rose-500"
+                    : phone && !phoneError
+                    ? "ring-emerald-500/50 focus:ring-emerald-500"
+                    : "ring-white/10 focus:ring-indigo-500"
+                }`}
+                placeholder="10-digit mobile number"
+              />
+            </div>
+            {phoneError && (
+              <p className="mt-1.5 text-xs text-rose-400 flex items-center gap-1">
+                <svg className="shrink-0" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                {phoneError}
+              </p>
+            )}
+            {phone && !phoneError && (
+              <p className="mt-1.5 text-xs text-emerald-400 flex items-center gap-1">
+                <svg className="shrink-0" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                Valid phone number
               </p>
             )}
           </div>
@@ -231,18 +297,40 @@ export default function SignupPage() {
               id="signup-submit"
               type="submit"
               disabled={loading || !isFormValid}
-              className="flex w-full justify-center rounded-xl btn-primary px-3 py-3 text-sm font-semibold text-white shadow-sm disabled:opacity-40 disabled:cursor-not-allowed transition-opacity"
+              className={`flex w-full items-center justify-center gap-2 rounded-xl px-3 py-3 text-sm font-semibold text-white shadow-sm disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer ${
+                isSlow
+                  ? "bg-gradient-to-r from-amber-600 to-indigo-600 hover:from-amber-500 hover:to-indigo-500 shadow-amber-500/20"
+                  : "btn-primary"
+              }`}
             >
               {loading ? (
-                <span className="flex items-center gap-2">
-                  <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
-                  </svg>
-                  Creating account...
-                </span>
-              ) : "Create Account"}
+                isSlow ? (
+                  <span className="flex items-center gap-2">
+                    <svg className="animate-spin h-4 w-4 text-amber-300" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                    </svg>
+                    <span>Waking up cloud server... ({seconds}s)</span>
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-2">
+                    <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                    </svg>
+                    <span>Creating account...</span>
+                  </span>
+                )
+              ) : (
+                "Create Account"
+              )}
             </button>
+
+            {loading && isSlow && (
+              <p className="mt-2.5 text-center text-[11px] text-amber-300/90 leading-relaxed animate-in fade-in">
+                Render free tier is spinning up the server container (~30s). Please don&apos;t refresh.
+              </p>
+            )}
           </div>
         </form>
 

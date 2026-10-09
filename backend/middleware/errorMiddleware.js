@@ -5,6 +5,7 @@ const sendErrorDev = (err, res) => {
     status: err.status,
     error: err,
     message: err.message,
+    details: err.details,
     stack: err.stack,
   });
 };
@@ -15,6 +16,7 @@ const sendErrorProd = (err, res) => {
     res.status(err.statusCode).json({
       status: err.status,
       message: err.message,
+      details: err.details,
     });
   } else {
     // Programming or other unknown error: don't leak error details
@@ -26,9 +28,21 @@ const sendErrorProd = (err, res) => {
   }
 };
 
-const errorHandler = (err, req, res, next) => {
+const errorHandler = (err, req, res, _next) => {
   err.statusCode = err.statusCode || 500;
   err.status = err.status || 'error';
+
+  if (err.code === 11000) {
+    if (err.keyValue?.phone || err.keyPattern?.phone) {
+      err.statusCode = 409;
+      err.message = 'This phone number is already registered with another account.';
+      err.isOperational = true;
+    } else if (err.keyValue?.username || err.keyPattern?.username) {
+      err.statusCode = 409;
+      err.message = 'Username is already taken. Please choose a different one.';
+      err.isOperational = true;
+    }
+  }
 
   if (process.env.NODE_ENV === 'production') {
     let error = err;
@@ -38,13 +52,21 @@ const errorHandler = (err, req, res, next) => {
       const message = `Invalid ${error.path}: ${error.value}.`;
       error = new AppError(message, 400);
     } else if (error.code === 11000) {
-      const value = error.keyValue
-        ? JSON.stringify(error.keyValue)
-        : (error.message && error.message.match(/(["'])(\\?.)*?\1/) ? error.message.match(/(["'])(\\?.)*?\1/)[0] : 'duplicate value');
-      const message = `Duplicate field value: ${value}. Please use another value!`;
-      error = new AppError(message, 400);
+      if (error.keyValue?.phone || error.keyPattern?.phone) {
+        error = new AppError('This phone number is already registered with another account.', 409);
+      } else if (error.keyValue?.username || error.keyPattern?.username) {
+        error = new AppError('Username is already taken. Please choose a different one.', 409);
+      } else {
+        const value = error.keyValue
+          ? JSON.stringify(error.keyValue)
+          : error.message && error.message.match(/(["'])(\\?.)*?\1/)
+            ? error.message.match(/(["'])(\\?.)*?\1/)[0]
+            : 'duplicate value';
+        const message = `Duplicate field value: ${value}. Please use another value!`;
+        error = new AppError(message, 400);
+      }
     } else if (error.name === 'ValidationError') {
-      const errors = Object.values(error.errors || {}).map(el => el.message);
+      const errors = Object.values(error.errors || {}).map((el) => el.message);
       const message = `Invalid input data. ${errors.join('. ')}`;
       error = new AppError(message, 400);
     } else if (error.name === 'JsonWebTokenError') {
