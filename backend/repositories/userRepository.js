@@ -9,8 +9,17 @@ class UserRepository {
     return await query;
   }
 
-  async findByUsername(username) {
-    return await User.findOne({ username });
+  async findByUsername(username, select = null) {
+    let query = User.findOne({ username });
+    if (select) {
+      query = query.select(select);
+    }
+    return await query;
+  }
+
+  async findByPhone(phone) {
+    if (!phone) return null;
+    return await User.findOne({ phone });
   }
 
   async createUser(userData, session = null) {

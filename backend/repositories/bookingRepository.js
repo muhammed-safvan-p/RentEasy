@@ -47,7 +47,13 @@ class BookingRepository {
     return await Booking.countDocuments(filter);
   }
 
-  async findOverlapping({ vehicleId, startDateTime, endDateTime, excludeBookingId = null, session = null }) {
+  async findOverlapping({
+    vehicleId,
+    startDateTime,
+    endDateTime,
+    excludeBookingId = null,
+    session = null,
+  }) {
     const start = new Date(startDateTime);
     const end = new Date(endDateTime);
 
@@ -123,7 +129,9 @@ class BookingRepository {
     if (isCancelled !== undefined && isCancelled !== null) {
       filter.isCancelled = isCancelled;
     }
-    return await Booking.find(filter).populate('createdBy', 'username email').sort({ startDateTime: 1 });
+    return await Booking.find(filter)
+      .populate('createdBy', 'username email')
+      .sort({ startDateTime: 1 });
   }
 
   async findByVehicleIds(vehicleIds) {
@@ -136,15 +144,15 @@ class BookingRepository {
    * in a single query execution without loading full historical documents.
    */
   async aggregateVehicleDashboardData(vehicleIds, now, monthStart, monthEnd) {
-    const objectIds = vehicleIds.map((id) => (typeof id === 'string' ? new mongoose.Types.ObjectId(id) : id));
+    const objectIds = vehicleIds.map((id) =>
+      typeof id === 'string' ? new mongoose.Types.ObjectId(id) : id
+    );
 
     const [facetResult] = await Booking.aggregate([
       { $match: { vehicleId: { $in: objectIds } } },
       {
         $facet: {
-          totalCounts: [
-            { $group: { _id: '$vehicleId', count: { $sum: 1 } } }
-          ],
+          totalCounts: [{ $group: { _id: '$vehicleId', count: { $sum: 1 } } }],
           monthCounts: [
             {
               $match: {
@@ -153,7 +161,7 @@ class BookingRepository {
                 endDateTime: { $gte: monthStart },
               },
             },
-            { $group: { _id: '$vehicleId', count: { $sum: 1 } } }
+            { $group: { _id: '$vehicleId', count: { $sum: 1 } } },
           ],
           activeAndUpcoming: [
             {
@@ -178,10 +186,14 @@ class BookingRepository {
     ]);
 
     const totalMap = new Map();
-    (facetResult?.totalCounts || []).forEach((item) => totalMap.set(item._id.toString(), item.count));
+    (facetResult?.totalCounts || []).forEach((item) =>
+      totalMap.set(item._id.toString(), item.count)
+    );
 
     const monthMap = new Map();
-    (facetResult?.monthCounts || []).forEach((item) => monthMap.set(item._id.toString(), item.count));
+    (facetResult?.monthCounts || []).forEach((item) =>
+      monthMap.set(item._id.toString(), item.count)
+    );
 
     const activeAndUpcoming = facetResult?.activeAndUpcoming || [];
 

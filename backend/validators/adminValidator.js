@@ -64,6 +64,18 @@ const createUserSchema = Joi.object({
     'string.min': 'Password must be at least 6 characters',
     'any.required': 'Password is required',
   }),
+  phone: Joi.string()
+    .allow('', null)
+    .optional()
+    .custom((value, helpers) => {
+      if (!value) return undefined;
+      const { normalizePhone, getPhoneValidationError } = require('../utils/phoneUtils');
+      const err = getPhoneValidationError(value);
+      if (err) {
+        return helpers.message(err);
+      }
+      return normalizePhone(value);
+    }),
   role: Joi.string().valid('user', 'admin').default('user'),
   isBlock: Joi.boolean().default(false),
 });
@@ -76,6 +88,18 @@ const updateUserSchema = Joi.object({
   password: Joi.string().min(6).allow('', null).optional().messages({
     'string.min': 'Password must be at least 6 characters',
   }),
+  phone: Joi.string()
+    .allow('', null)
+    .optional()
+    .custom((value, helpers) => {
+      if (!value) return null;
+      const { normalizePhone, getPhoneValidationError } = require('../utils/phoneUtils');
+      const err = getPhoneValidationError(value);
+      if (err) {
+        return helpers.message(err);
+      }
+      return normalizePhone(value);
+    }),
   role: Joi.string().valid('user', 'admin').optional(),
   isBlock: Joi.boolean().optional(),
 });

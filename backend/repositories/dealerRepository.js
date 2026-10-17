@@ -15,7 +15,8 @@ class DealerRepository {
   async findByVehicle(vehicleId) {
     return await Dealer.find({ vehicleId })
       .collation({ locale: 'en', strength: 2 })
-      .sort({ name: 1 });
+      .sort({ name: 1 })
+      .lean();
   }
 
   /**
@@ -39,7 +40,11 @@ class DealerRepository {
    * Update dealer by ID.
    */
   async updateById(id, data) {
-    return await Dealer.findByIdAndUpdate(id, { $set: data }, { returnDocument: 'after', runValidators: true });
+    return await Dealer.findByIdAndUpdate(
+      id,
+      { $set: data },
+      { returnDocument: 'after', runValidators: true }
+    );
   }
 
   /**

@@ -1,19 +1,14 @@
 "use client";
 
 import React, { useState, useEffect, useMemo } from "react";
-import Image from "next/image";
 import {
   X,
   Car,
-  Fuel,
   Users,
   Save,
   Loader2,
-  CheckCircle2,
   AlertCircle,
   Search,
-  Sparkles,
-  ShieldCheck,
   Check,
   Sliders,
   FileText,
@@ -24,6 +19,7 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { Vehicle } from "@/types";
+import { VehicleImageUploader } from "@/components/common/VehicleImageUploader";
 
 interface UserItem {
   _id: string;
@@ -78,28 +74,27 @@ export const EditVehicleModal: React.FC<EditVehicleModalProps> = ({
   // Form submission state
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [imageError, setImageError] = useState(false);
 
-  // Initialize form when vehicle changes
-  useEffect(() => {
-    if (vehicle) {
-      setName(vehicle.name || "");
-      setPlateNumber(vehicle.plateNumber || "");
-      setFuelType(vehicle.fuelType || "Diesel");
-      setTransmission(vehicle.transmission || "Manual");
-      setSeatingCapacity(vehicle.seatingCapacity !== undefined ? vehicle.seatingCapacity : 5);
-      setImageUrl(vehicle.imageUrl || "");
-      setIsActive(vehicle.isActive !== undefined ? vehicle.isActive : true);
-      setNotes(vehicle.notes || "");
+  const [prevVehicleId, setPrevVehicleId] = useState<string | null>(vehicle?._id || null);
 
-      const extractedOwners = vehicle.ownerIds
-        ? vehicle.ownerIds.map((o) => (typeof o === "object" && o?._id ? o._id : String(o)))
-        : [];
-      setOwnerIds(extractedOwners);
-      setImageError(false);
-      setError("");
-    }
-  }, [vehicle]);
+  // Sync state if vehicle changes
+  if (vehicle && vehicle._id !== prevVehicleId) {
+    setPrevVehicleId(vehicle._id);
+    setName(vehicle.name || "");
+    setPlateNumber(vehicle.plateNumber || "");
+    setFuelType((vehicle.fuelType as string) || "Diesel");
+    setTransmission((vehicle.transmission as string) || "Manual");
+    setSeatingCapacity(vehicle.seatingCapacity !== undefined ? vehicle.seatingCapacity : 5);
+    setImageUrl(vehicle.imageUrl || "");
+    setIsActive(vehicle.isActive !== undefined ? vehicle.isActive : true);
+    setNotes(vehicle.notes || "");
+
+    const extractedOwners = vehicle.ownerIds
+      ? vehicle.ownerIds.map((o) => (typeof o === "object" && o?._id ? o._id : String(o)))
+      : [];
+    setOwnerIds(extractedOwners);
+    setError("");
+  }
 
   // Load system users for ownership assignment
   useEffect(() => {
@@ -482,71 +477,19 @@ export const EditVehicleModal: React.FC<EditVehicleModalProps> = ({
           </div>
         </section>
 
-        {/* 4. Vehicle Imagery with Live Card Preview */}
+        {/* 4. Vehicle Imagery */}
         <section className="space-y-3">
           <div className="flex items-center gap-2 text-xs font-bold text-slate-400 uppercase tracking-wider">
             <ImageIcon className="w-3.5 h-3.5 text-indigo-600" />
-            <span>Vehicle Photo & Imagery</span>
+            <span>Vehicle Photo &amp; Imagery</span>
           </div>
-
-          <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1.5">
-              Direct Image URL
-            </label>
-            <div className="flex gap-2">
-              <input
-                type="url"
-                value={imageUrl}
-                onChange={(e) => {
-                  setImageUrl(e.target.value);
-                  setImageError(false);
-                }}
-                placeholder="https://images.unsplash.com/... or cloud image URL"
-                className="flex-1 text-sm px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-white focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/25 focus:border-indigo-500 transition-all text-slate-800"
-              />
-              {imageUrl && (
-                <button
-                  type="button"
-                  onClick={() => setImageUrl("")}
-                  className="px-3 py-2 text-xs font-semibold text-slate-500 hover:text-rose-600 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors"
-                >
-                  Clear
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* Live Image Thumbnail Preview */}
-          <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200/80 flex items-center gap-4">
-            <div className="w-24 h-16 rounded-xl bg-slate-200 overflow-hidden relative border border-slate-300/80 shrink-0 flex items-center justify-center">
-              {imageUrl && !imageError ? (
-                <Image
-                  src={imageUrl}
-                  alt={name || "Vehicle Preview"}
-                  fill
-                  className="object-cover"
-                  onError={() => setImageError(true)}
-                  unoptimized
-                />
-              ) : (
-                <div className="flex flex-col items-center justify-center text-slate-400">
-                  <Car className="w-6 h-6" />
-                </div>
-              )}
-            </div>
-            <div>
-              <p className="text-xs font-bold text-slate-800">
-                {imageUrl && !imageError ? "Photo Loaded Successfully" : "No Photo Preview"}
-              </p>
-              <p className="text-[11px] text-slate-500">
-                {imageError
-                  ? "Failed to load image from given URL. Check URL validity."
-                  : imageUrl
-                  ? "Image will be rendered in customer booking and public garage."
-                  : "Provide a valid HTTP/HTTPS image URL to show the vehicle photo."}
-              </p>
-            </div>
-          </div>
+          <VehicleImageUploader
+            currentImageUrl={imageUrl}
+            onUploadComplete={(url) => setImageUrl(url)}
+            onClear={() => setImageUrl("")}
+            disabled={saving}
+            variant="light"
+          />
         </section>
 
         {/* 5. Assigned Owners (Searchable Multi-Select) */}

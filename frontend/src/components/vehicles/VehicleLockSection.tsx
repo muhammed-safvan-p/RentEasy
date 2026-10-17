@@ -230,7 +230,7 @@ export const VehicleLockSection: React.FC<VehicleLockSectionProps> = ({
               </button>
 
               <Link
-                href={`/vehicles/${vehicleId}/book?date=${getLocalTodayDateString(selectedDate)}`}
+                href={`/vehicles/${vehicleId}/book${selectedDate ? `?date=${getLocalTodayDateString(selectedDate)}` : ""}`}
                 className="w-full flex items-center justify-between py-2.5 px-3.5 rounded-xl bg-indigo-500/15 hover:bg-indigo-500/25 border border-indigo-500/30 text-indigo-200 hover:text-white text-xs font-bold transition-all active:scale-95 group cursor-pointer shadow-sm"
               >
                 <div className="flex items-center gap-2">

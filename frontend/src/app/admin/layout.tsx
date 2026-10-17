@@ -1,20 +1,43 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Home, Users, Car, LogOut } from "lucide-react";
+import { Home, Users, Car, LogOut, Menu, X } from "lucide-react";
 import { api, clearAuthToken } from "@/lib/api";
 import { logger } from "@/lib/logger";
+import { useCurrentUser } from "@/hooks/useVehicleData";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { user, isLoading } = useCurrentUser();
+
+  useEffect(() => {
+    if (!isLoading && (!user || user.role !== "admin")) {
+      router.replace("/dashboard");
+    }
+  }, [user, isLoading, router]);
 
   const navItems = [
     { name: "Dashboard", href: "/admin/dashboard", icon: Home },
     { name: "Users", href: "/admin/users", icon: Users },
     { name: "Vehicles", href: "/admin/vehicles", icon: Car },
   ];
+
+
+
+  // Handle ESC key to close mobile drawer
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMobileMenuOpen(false);
+    };
+    if (mobileMenuOpen) {
+      window.addEventListener("keydown", handleKeyDown);
+    }
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [mobileMenuOpen]);
 
   const handleLogout = async () => {
     try {
@@ -27,71 +50,146 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     }
   };
 
+  const getPageTitle = () => {
+    if (pathname === "/admin/vehicles/add") return "Add Vehicle";
+    if (pathname?.startsWith("/admin/vehicles/")) return "Vehicle Detail";
+    return navItems.find((item) => pathname?.startsWith(item.href))?.name || "Admin Portal";
+  };
+
+  const sidebarContent = (
+    <div className="flex flex-col h-full bg-slate-900 text-white w-64">
+      {/* Brand Header */}
+      <div className="p-5 sm:p-6 flex items-center justify-between">
+        <Link
+          href="/admin/dashboard"
+          className="text-xl sm:text-2xl font-bold tracking-tight text-white flex items-center gap-2.5"
+        >
+          <span className="w-8 h-8 rounded-lg bg-indigo-500 flex items-center justify-center shrink-0">
+            <Car className="w-5 h-5 text-white" />
+          </span>
+          <span>
+            RentEasy <span className="text-xs sm:text-sm font-normal text-indigo-400">Admin</span>
+          </span>
+        </Link>
+
+        {/* Close button for mobile drawer */}
+        <button
+          onClick={() => setMobileMenuOpen(false)}
+          className="lg:hidden p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+          aria-label="Close navigation menu"
+        >
+          <X className="w-5 h-5" />
+        </button>
+      </div>
+
+      {/* Navigation Links */}
+      <nav className="flex-1 px-4 space-y-1.5 mt-2 overflow-y-auto">
+        {navItems.map((item) => {
+          const Icon = item.icon;
+          const isActive =
+            pathname === item.href ||
+            (item.href !== "/admin/dashboard" && pathname?.startsWith(item.href));
+          return (
+            <Link
+              key={item.name}
+              href={item.href}
+              onClick={() => setMobileMenuOpen(false)}
+              className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
+                isActive
+                  ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/25"
+                  : "text-slate-400 hover:bg-slate-800/80 hover:text-white"
+              }`}
+            >
+              <Icon className="w-5 h-5 shrink-0" />
+              <span>{item.name}</span>
+            </Link>
+          );
+        })}
+      </nav>
+
+      {/* Logout Action */}
+      <div className="p-4 border-t border-slate-800">
+        <button
+          onClick={handleLogout}
+          className="flex items-center gap-3 px-4 py-2.5 w-full rounded-xl text-sm font-medium text-rose-400 hover:bg-rose-500/10 transition-all text-left cursor-pointer"
+        >
+          <LogOut className="w-4 h-4 shrink-0" />
+          <span>Logout</span>
+        </button>
+      </div>
+    </div>
+  );
+
+  if (isLoading || !user || user.role !== "admin") {
+    return (
+      <div className="flex h-screen w-full items-center justify-center bg-slate-900 text-white">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin" />
+          <p className="text-xs text-slate-400 font-medium">Verifying admin access...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="admin-layout flex h-screen w-full bg-[#f8fafc] text-slate-800 font-sans">
-      {/* Sidebar */}
-      <aside className="w-64 bg-slate-900 text-white flex flex-col shrink-0">
-        <div className="p-6">
-          <h2 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2">
-            <span className="w-8 h-8 rounded-lg bg-indigo-500 flex items-center justify-center">
-              <Car className="w-5 h-5 text-white" />
-            </span>
-            RentEasy <span className="text-sm font-normal text-indigo-400 mt-1">Admin</span>
-          </h2>
-        </div>
-
-        <nav className="flex-1 px-4 space-y-2 mt-4">
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            const isActive = pathname === item.href || pathname?.startsWith(item.href + "/");
-            return (
-              <Link
-                key={item.name}
-                href={item.href}
-                className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
-                  isActive
-                    ? "bg-indigo-600 text-white shadow-md"
-                    : "text-slate-400 hover:bg-slate-800 hover:text-white"
-                }`}
-              >
-                <Icon className="w-5 h-5" />
-                <span className="font-medium">{item.name}</span>
-              </Link>
-            );
-          })}
-        </nav>
-
-        <div className="p-4 border-t border-slate-800">
-          <button
-            onClick={handleLogout}
-            className="flex items-center gap-3 px-4 py-3 w-full rounded-xl text-rose-400 hover:bg-rose-500/10 transition-all text-left"
-          >
-            <LogOut className="w-5 h-5" />
-            <span className="font-medium">Logout</span>
-          </button>
-        </div>
+    <div className="admin-layout flex h-screen w-full bg-[#f8fafc] text-slate-800 font-sans overflow-hidden">
+      {/* Desktop Permanent Sidebar */}
+      <aside className="hidden lg:flex w-64 shrink-0 h-full">
+        {sidebarContent}
       </aside>
 
-      {/* Main Content */}
-      <main className="flex-1 flex flex-col min-w-0 overflow-hidden bg-white rounded-l-2xl shadow-[-10px_0_30px_rgba(0,0,0,0.05)] my-2 mr-2">
+      {/* Mobile Drawer Backdrop */}
+      {mobileMenuOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-slate-950/60 backdrop-blur-xs lg:hidden transition-opacity animate-in fade-in duration-200"
+          onClick={() => setMobileMenuOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
+      {/* Mobile Slide-Over Drawer */}
+      <div
+        className={`fixed inset-y-0 left-0 z-50 transform lg:hidden transition-transform duration-300 ease-in-out shadow-2xl ${
+          mobileMenuOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
+        {sidebarContent}
+      </div>
+
+      {/* Main Content Area */}
+      <main className="flex-1 flex flex-col min-w-0 overflow-hidden bg-white lg:rounded-l-2xl lg:shadow-[-10px_0_30px_rgba(0,0,0,0.05)] lg:my-2 lg:mr-2">
         {/* Top Header */}
-        <header className="h-16 border-b border-slate-100 flex items-center justify-between px-8 bg-white shrink-0">
-          <h1 className="text-xl font-semibold text-slate-800">
-            {navItems.find(item => pathname?.startsWith(item.href))?.name || "Dashboard"}
-          </h1>
-          <div className="flex items-center gap-4">
-            <div className="text-sm text-right">
-              <p className="font-medium text-slate-700">Admin User</p>
-              <p className="text-slate-400 text-xs">System Administrator</p>
+        <header className="h-16 border-b border-slate-100 flex items-center justify-between px-4 sm:px-6 lg:px-8 bg-white shrink-0">
+          <div className="flex items-center gap-3 min-w-0">
+            {/* Mobile Hamburger Button */}
+            <button
+              onClick={() => setMobileMenuOpen(true)}
+              className="lg:hidden p-2 rounded-xl text-slate-600 hover:bg-slate-100 transition-colors shrink-0"
+              aria-label="Open navigation menu"
+              aria-expanded={mobileMenuOpen}
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+
+            <h1 className="text-base sm:text-xl font-bold text-slate-800 truncate">
+              {getPageTitle()}
+            </h1>
+          </div>
+
+          {/* User Profile Pill */}
+          <div className="flex items-center gap-3 shrink-0">
+            <div className="text-right hidden sm:block">
+              <p className="font-semibold text-xs text-slate-700">{user.username}</p>
+              <p className="text-slate-400 text-[10px]">System Administrator</p>
             </div>
-            <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold">
-              A
+            <div className="w-9 h-9 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold text-xs shadow-xs uppercase">
+              {user.username.charAt(0)}
             </div>
           </div>
         </header>
 
-        {/* Page Content */}
-        <div className="flex-1 overflow-auto p-8 bg-slate-50/50">
+        {/* Scrollable Page Content Container */}
+        <div className="flex-1 overflow-auto p-4 sm:p-6 lg:p-8 bg-slate-50/50">
           {children}
         </div>
       </main>

@@ -30,6 +30,6 @@ walletSchema.virtual('totalBalance').get(function () {
   return roundCurrency((this.cashBalance || 0) + (this.bankBalance || 0));
 });
 
-  walletSchema.set('toJSON', { virtuals: true });
+walletSchema.set('toJSON', { virtuals: true });
 
-  module.exports = mongoose.model('Wallet', walletSchema);
+module.exports = mongoose.model('Wallet', walletSchema);

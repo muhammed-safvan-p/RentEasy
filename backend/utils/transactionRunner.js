@@ -18,12 +18,14 @@ async function runInTransaction(callback) {
     });
     return result;
   } catch (error) {
-    // Check if error is due to transactions not supported (standalone MongoDB instance)
+    // Check if error is due to transactions/retryable writes not supported (standalone MongoDB instance)
     const isStandaloneError =
       error.message &&
       (error.message.includes('replica set') ||
         error.message.includes('Transaction numbers are only allowed') ||
         error.message.includes('Transactions are not supported') ||
+        error.message.includes('retryable writes') ||
+        error.message.includes('retryWrites') ||
         error.message.includes('mongos') ||
         error.code === 20 ||
         error.codeName === 'IllegalOperation');
@@ -46,14 +48,7 @@ async function runInTransaction(callback) {
 function isReplicaSet() {
   const topology = mongoose.connection.client?.topology?.description;
   if (!topology) return false;
-  if (topology.type === 'Single') {
-    const servers = Array.from(topology.servers?.values() || []);
-    if (servers.some((s) => s.type === 'Standalone')) {
-      return false;
-    }
-  }
   return topology.type === 'ReplicaSetWithPrimary' || topology.type === 'Sharded';
 }
 
 module.exports = { runInTransaction, isReplicaSet };
-

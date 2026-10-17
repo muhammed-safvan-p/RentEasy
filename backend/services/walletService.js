@@ -36,7 +36,13 @@ class WalletService {
   async reverseTransaction(session, wallet, oldTx) {
     // Reversing is applying the opposite amount
     const reverseType = oldTx.type === 'income' ? 'expense' : 'income';
-    return await this.applyTransaction(session, wallet, reverseType, oldTx.paymentMethod, oldTx.amount);
+    return await this.applyTransaction(
+      session,
+      wallet,
+      reverseType,
+      oldTx.paymentMethod,
+      oldTx.amount
+    );
   }
 
   /**
@@ -104,11 +110,11 @@ class WalletService {
     }
 
     // Calculate accurate monthIncome and monthExpense across all transactions in that month/period
-    const allMonthTransactions = await walletRepository.findTransactions(
-      filter,
-      null,
-      { transactionDate: -1, createdAt: -1, _id: -1 }
-    );
+    const allMonthTransactions = await walletRepository.findTransactions(filter, null, {
+      transactionDate: -1,
+      createdAt: -1,
+      _id: -1,
+    });
 
     let monthIncome = 0;
     let monthExpense = 0;
@@ -152,7 +158,8 @@ class WalletService {
    * Adds a manual or system transaction to a vehicle wallet.
    */
   async addTransaction(vehicleId, transactionData, userId) {
-    const { type, paymentMethod, amount, note, source, bookingId, transactionDate } = transactionData;
+    const { type, paymentMethod, amount, note, source, bookingId, transactionDate } =
+      transactionData;
     const numAmount = Number(amount);
     const parsedDate = transactionDate ? new Date(transactionDate) : new Date();
 
@@ -191,7 +198,13 @@ class WalletService {
         session
       );
 
-      const updatedWallet = await this.applyTransaction(session, wallet, type, paymentMethod, numAmount);
+      const updatedWallet = await this.applyTransaction(
+        session,
+        wallet,
+        type,
+        paymentMethod,
+        numAmount
+      );
       const warnings = this.buildWarnings(updatedWallet);
 
       await transaction.populate({ path: 'createdBy', select: 'username role' });
@@ -202,65 +215,103 @@ class WalletService {
 
   /**
    * Edits a transaction and recalculates the wallet balances.
+   * Verifies that the transaction belongs to the wallet of the provided vehicleId (BOLA/IDOR protection).
    */
-  async editTransaction(id, updateData) {
+  async editTransaction(vehicleId, id, updateData) {
     const { type, paymentMethod, amount, note } = updateData;
+
+    const wallet = await walletRepository.findByVehicleId(vehicleId);
+    if (!wallet) {
+      throw new AppError('Wallet not found for this vehicle', 404);
+    }
 
     const transaction = await walletRepository.findTransactionById(id);
     if (!transaction) {
       throw new AppError('Transaction not found', 404);
     }
 
-    const wallet = await walletRepository.findById(transaction.walletId);
-    if (!wallet) {
-      throw new AppError('Wallet not found', 404);
+    // Verify transaction belongs to this vehicle's wallet
+    if (transaction.walletId.toString() !== wallet._id.toString()) {
+      throw new AppError('Transaction does not belong to this vehicle wallet', 403);
     }
 
     return await runInTransaction(async (session) => {
+      const sessionWallet = await walletRepository.findById(wallet._id, session);
+      const sessionTransaction = await walletRepository.findTransactionById(id, session);
+
+      if (!sessionWallet || !sessionTransaction) {
+        throw new AppError('Transaction or wallet could not be loaded in transaction', 404);
+      }
+
+      if (sessionTransaction.walletId.toString() !== sessionWallet._id.toString()) {
+        throw new AppError('Transaction does not belong to this vehicle wallet', 403);
+      }
+
       // Reverse old transaction effects atomically
-      await this.reverseTransaction(session, wallet, transaction);
+      await this.reverseTransaction(session, sessionWallet, sessionTransaction);
 
       // Apply new fields
-      if (type) transaction.type = type;
-      if (paymentMethod) transaction.paymentMethod = paymentMethod;
-      if (amount !== undefined) transaction.amount = Number(amount);
-      if (note !== undefined) transaction.note = note ? note.trim() : '';
+      if (type) sessionTransaction.type = type;
+      if (paymentMethod) sessionTransaction.paymentMethod = paymentMethod;
+      if (amount !== undefined) sessionTransaction.amount = Number(amount);
+      if (note !== undefined) sessionTransaction.note = note ? note.trim() : '';
 
-      await walletRepository.save(transaction, session);
+      await walletRepository.save(sessionTransaction, session);
 
       // Apply new transaction effects atomically
       const updatedWallet = await this.applyTransaction(
         session,
-        wallet,
-        transaction.type,
-        transaction.paymentMethod,
-        transaction.amount
+        sessionWallet,
+        sessionTransaction.type,
+        sessionTransaction.paymentMethod,
+        sessionTransaction.amount
       );
       const warnings = this.buildWarnings(updatedWallet);
 
-      return { transaction, warnings };
+      return { transaction: sessionTransaction, warnings };
     });
   }
 
   /**
    * Deletes a transaction and reverses its effect on the wallet balance.
+   * Verifies that the transaction belongs to the wallet of the provided vehicleId (BOLA/IDOR protection).
    */
-  async deleteTransaction(id) {
+  async deleteTransaction(vehicleId, id) {
+    const wallet = await walletRepository.findByVehicleId(vehicleId);
+    if (!wallet) {
+      throw new AppError('Wallet not found for this vehicle', 404);
+    }
+
     const transaction = await walletRepository.findTransactionById(id);
     if (!transaction) {
       throw new AppError('Transaction not found', 404);
     }
 
-    const wallet = await walletRepository.findById(transaction.walletId);
-    if (!wallet) {
-      throw new AppError('Wallet not found', 404);
+    // Verify transaction belongs to this vehicle's wallet
+    if (transaction.walletId.toString() !== wallet._id.toString()) {
+      throw new AppError('Transaction does not belong to this vehicle wallet', 403);
     }
 
     return await runInTransaction(async (session) => {
-      const updatedWallet = await this.reverseTransaction(session, wallet, transaction);
+      const sessionWallet = await walletRepository.findById(wallet._id, session);
+      const sessionTransaction = await walletRepository.findTransactionById(id, session);
+
+      if (!sessionWallet || !sessionTransaction) {
+        throw new AppError('Transaction or wallet could not be loaded in transaction', 404);
+      }
+
+      if (sessionTransaction.walletId.toString() !== sessionWallet._id.toString()) {
+        throw new AppError('Transaction does not belong to this vehicle wallet', 403);
+      }
+
+      const updatedWallet = await this.reverseTransaction(
+        session,
+        sessionWallet,
+        sessionTransaction
+      );
       const warnings = this.buildWarnings(updatedWallet);
 
-      await walletRepository.deleteTransaction(transaction);
+      await walletRepository.deleteTransaction(sessionTransaction, session);
 
       return { warnings };
     });

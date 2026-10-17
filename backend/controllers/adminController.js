@@ -1,4 +1,5 @@
 const adminService = require('../services/adminService');
+const AppError = require('../utils/AppError');
 
 class AdminController {
   dashboardGreeting(req, res, next) {
@@ -80,7 +81,7 @@ class AdminController {
       next(error);
     }
   }
-  
+
   // GET /api/admin/users
   async getUsers(req, res, next) {
     try {
@@ -131,6 +132,21 @@ class AdminController {
       const result = await adminService.toggleUserBlock(req.params.id, req.user._id);
       res.status(200).json(result);
     } catch (error) {
+      next(error);
+    }
+  }
+
+  // PATCH /api/admin/users/:id/phone
+  async updateUserPhone(req, res, next) {
+    try {
+      const result = await adminService.updateUserPhone(req.params.id, req.body.phone);
+      res.status(200).json(result);
+    } catch (error) {
+      if (error.code === 11000) {
+        return next(
+          new AppError('This phone number is already registered with another account.', 409)
+        );
+      }
       next(error);
     }
   }

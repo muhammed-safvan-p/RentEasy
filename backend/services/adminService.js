@@ -83,47 +83,74 @@ class AdminService {
       }
     }
 
-    const vehicle = await vehicleRepository.create(vehicleData);
-
-    // Auto-create Wallet for the new vehicle
     const cashBalance = Number(initialCashBalance) || 0;
     const bankBalance = Number(initialBankBalance) || 0;
 
-    const wallet = await walletRepository.createWallet({
-      vehicleId: vehicle._id,
-      cashBalance: 0,
-      bankBalance: 0,
+    return await runInTransaction(async (session) => {
+      const vehicle = await vehicleRepository.create(vehicleData, session);
+
+      // Auto-create Wallet for the new vehicle
+      const wallet = await walletRepository.createWallet(
+        {
+          vehicleId: vehicle._id,
+          cashBalance: 0,
+          bankBalance: 0,
+        },
+        session
+      );
+
+      if (cashBalance !== 0) {
+        const isIncome = cashBalance > 0;
+        const absAmount = Math.abs(cashBalance);
+        await walletRepository.createTransaction(
+          {
+            walletId: wallet._id,
+            vehicleId: vehicle._id,
+            type: isIncome ? 'income' : 'expense',
+            paymentMethod: 'cash',
+            amount: absAmount,
+            note: isIncome ? 'Initial cash balance' : 'Initial negative cash balance',
+            source: 'manual',
+            createdBy: adminUserId,
+          },
+          session
+        );
+        await walletService.applyTransaction(
+          session,
+          wallet,
+          isIncome ? 'income' : 'expense',
+          'cash',
+          absAmount
+        );
+      }
+
+      if (bankBalance !== 0) {
+        const isIncome = bankBalance > 0;
+        const absAmount = Math.abs(bankBalance);
+        await walletRepository.createTransaction(
+          {
+            walletId: wallet._id,
+            vehicleId: vehicle._id,
+            type: isIncome ? 'income' : 'expense',
+            paymentMethod: 'bank',
+            amount: absAmount,
+            note: isIncome ? 'Initial bank balance' : 'Initial negative bank balance',
+            source: 'manual',
+            createdBy: adminUserId,
+          },
+          session
+        );
+        await walletService.applyTransaction(
+          session,
+          wallet,
+          isIncome ? 'income' : 'expense',
+          'bank',
+          absAmount
+        );
+      }
+
+      return vehicle;
     });
-
-    if (cashBalance > 0) {
-      await walletRepository.createTransaction({
-        walletId: wallet._id,
-        vehicleId: vehicle._id,
-        type: 'income',
-        paymentMethod: 'cash',
-        amount: cashBalance,
-        note: 'Initial cash balance',
-        source: 'manual',
-        createdBy: adminUserId,
-      });
-      await walletService.applyTransaction(null, wallet, 'income', 'cash', cashBalance);
-    }
-
-    if (bankBalance > 0) {
-      await walletRepository.createTransaction({
-        walletId: wallet._id,
-        vehicleId: vehicle._id,
-        type: 'income',
-        paymentMethod: 'bank',
-        amount: bankBalance,
-        note: 'Initial bank balance',
-        source: 'manual',
-        createdBy: adminUserId,
-      });
-      await walletService.applyTransaction(null, wallet, 'income', 'bank', bankBalance);
-    }
-
-    return vehicle;
   }
 
   async updateVehicle(id, updateDataInput) {
@@ -158,7 +185,28 @@ class AdminService {
     vehicle.plateNumber = formattedPlate;
     if (ownerIds !== undefined) vehicle.ownerIds = ownerIds;
     if (notes !== undefined) vehicle.notes = notes ? notes.trim() : '';
-    if (imageUrl !== undefined) vehicle.imageUrl = imageUrl ? imageUrl.trim() : null;
+
+    if (imageUrl !== undefined) {
+      const trimmedNewImage = imageUrl ? imageUrl.trim() : null;
+      // If image is being replaced or removed, destroy the old one on Cloudinary
+      if (
+        vehicle.imageUrl &&
+        vehicle.imageUrl !== trimmedNewImage &&
+        (vehicle.imageUrl.includes('cloudinary.com') || vehicle.imageUrl.includes('res.cloudinary'))
+      ) {
+        try {
+          const { cloudinary } = require('../config/cloudinary');
+          const match = vehicle.imageUrl.match(/(renteasy\/vehicles\/[^./?#]+)/);
+          if (match && match[1]) {
+            cloudinary.uploader.destroy(match[1]).catch(() => {});
+          }
+        } catch (_e) {
+          // non-blocking
+        }
+      }
+      vehicle.imageUrl = trimmedNewImage;
+    }
+
     if (fuelType) vehicle.fuelType = fuelType;
     if (transmission) vehicle.transmission = transmission;
     if (seatingCapacity !== undefined && seatingCapacity !== '') {
@@ -183,7 +231,10 @@ class AdminService {
     }
     vehicle.isActive = !vehicle.isActive;
     await vehicleRepository.save(vehicle);
-    return { isActive: vehicle.isActive, message: `Vehicle ${vehicle.isActive ? 'activated' : 'deactivated'}` };
+    return {
+      isActive: vehicle.isActive,
+      message: `Vehicle ${vehicle.isActive ? 'activated' : 'deactivated'}`,
+    };
   }
 
   async deleteVehicle(id) {
@@ -200,18 +251,39 @@ class AdminService {
       );
     }
 
-    // Cascade delete vehicle and all associated records atomically in a transaction
+    // Cascade delete vehicle and all associated records atomically in a transaction.
+    // Operations run sequentially (not Promise.all) because a MongoDB ClientSession
+    // is single-threaded — parallel operations on the same session cause a
+    // "transaction number collision" error. Child documents are deleted first,
+    // the vehicle document itself is deleted last.
     await runInTransaction(async (session) => {
-      await Promise.all([
-        vehicleRepository.deleteById(id, session),
-        dealerRepository.deleteManyByVehicleId(id, session),
-        lockRepository.deleteManyByVehicleId(id, session),
-        walletRepository.deleteByVehicleId(id, session),
-        walletRepository.deleteTransactionsByVehicleId(id, session),
-        bookingRepository.deletePaymentsByVehicleId(id, session),
-        bookingRepository.deleteManyByVehicleId(id, session),
-      ]);
+      await dealerRepository.deleteManyByVehicleId(id, session);
+      await lockRepository.deleteManyByVehicleId(id, session);
+      await walletRepository.deleteTransactionsByVehicleId(id, session);
+      await walletRepository.deleteByVehicleId(id, session);
+      await bookingRepository.deletePaymentsByVehicleId(id, session);
+      await bookingRepository.deleteManyByVehicleId(id, session);
+      await vehicleRepository.deleteById(id, session); // vehicle deleted last
     });
+
+    // Cleanup vehicle image from Cloudinary asynchronously if present
+    if (
+      vehicle.imageUrl &&
+      (vehicle.imageUrl.includes('cloudinary.com') || vehicle.imageUrl.includes('res.cloudinary'))
+    ) {
+      try {
+        const { cloudinary } = require('../config/cloudinary');
+        const match = vehicle.imageUrl.match(/(renteasy\/vehicles\/[^./?#]+)/);
+        if (match && match[1]) {
+          await cloudinary.uploader.destroy(match[1]);
+        }
+      } catch (err) {
+        console.error(
+          'Non-critical: Failed to delete vehicle image from Cloudinary on vehicle deletion:',
+          err.message
+        );
+      }
+    }
 
     return { message: 'Vehicle deleted successfully' };
   }
@@ -233,6 +305,7 @@ class AdminService {
       _id: u._id,
       username: u.username,
       role: u.role,
+      phone: u.phone || undefined,
       isBlock: u.isBlock,
       vehicleCount: countMap.get(u._id.toString()) || 0,
       createdAt: u.createdAt,
@@ -241,12 +314,25 @@ class AdminService {
   }
 
   async createUser(userData) {
-    const { username, password, role, isBlock } = userData;
+    const { username, password, phone, role, isBlock } = userData;
     const trimmedUsername = username.trim();
 
     const existing = await userRepository.findByUsername(trimmedUsername);
     if (existing) {
       throw new AppError('Username already exists', 400);
+    }
+
+    let normalizedPhone = undefined;
+    if (phone) {
+      const { normalizePhone, isValidPhone } = require('../utils/phoneUtils');
+      normalizedPhone = normalizePhone(phone);
+      if (!isValidPhone(normalizedPhone)) {
+        throw new AppError('Phone number must be a valid 10-digit number', 400);
+      }
+      const existingPhone = await userRepository.findByPhone(normalizedPhone);
+      if (existingPhone) {
+        throw new AppError('This phone number is already registered with another account.', 409);
+      }
     }
 
     const salt = await bcrypt.genSalt(10);
@@ -255,6 +341,7 @@ class AdminService {
     const user = await userRepository.createUser({
       username: trimmedUsername,
       password: hashedPassword,
+      phone: normalizedPhone,
       role: role || 'user',
       isBlock: isBlock || false,
     });
@@ -262,6 +349,7 @@ class AdminService {
     return {
       _id: user._id,
       username: user.username,
+      phone: user.phone || undefined,
       role: user.role,
       isBlock: user.isBlock,
       vehicleCount: 0,
@@ -271,7 +359,7 @@ class AdminService {
   }
 
   async updateUser(userId, updateData, currentAdminId) {
-    const { username, password, role, isBlock } = updateData;
+    const { username, password, phone, role, isBlock } = updateData;
 
     const user = await userRepository.findById(userId);
     if (!user) {
@@ -286,6 +374,23 @@ class AdminService {
           throw new AppError('Username already exists', 400);
         }
         user.username = trimmedUsername;
+      }
+    }
+
+    if (phone !== undefined) {
+      if (phone && phone.trim() !== '') {
+        const { normalizePhone, isValidPhone } = require('../utils/phoneUtils');
+        const normalizedPhone = normalizePhone(phone);
+        if (!isValidPhone(normalizedPhone)) {
+          throw new AppError('Phone number must be a valid 10-digit number', 400);
+        }
+        const existingPhone = await userRepository.findByPhone(normalizedPhone);
+        if (existingPhone && existingPhone._id.toString() !== user._id.toString()) {
+          throw new AppError('This phone number is already registered with another account.', 409);
+        }
+        user.phone = normalizedPhone;
+      } else {
+        user.phone = undefined;
       }
     }
 
@@ -314,11 +419,44 @@ class AdminService {
     return {
       _id: updatedUser._id,
       username: updatedUser.username,
+      phone: updatedUser.phone || undefined,
       role: updatedUser.role,
       isBlock: updatedUser.isBlock,
       vehicleCount,
       createdAt: updatedUser.createdAt,
       updatedAt: updatedUser.updatedAt,
+    };
+  }
+
+  async updateUserPhone(userId, phone) {
+    const { normalizePhone, isValidPhone } = require('../utils/phoneUtils');
+    const normalizedPhone = normalizePhone(phone);
+
+    if (!normalizedPhone || !isValidPhone(normalizedPhone)) {
+      throw new AppError('Phone number must be a valid 10-digit number', 400);
+    }
+
+    const user = await userRepository.findById(userId);
+    if (!user) {
+      throw new AppError('User not found', 404);
+    }
+
+    const existingWithPhone = await userRepository.findByPhone(normalizedPhone);
+    if (existingWithPhone && existingWithPhone._id.toString() !== user._id.toString()) {
+      throw new AppError('This phone number is already registered with another account.', 409);
+    }
+
+    user.phone = normalizedPhone;
+    await userRepository.save(user);
+
+    return {
+      message: 'Phone number updated successfully',
+      user: {
+        _id: user._id,
+        username: user.username,
+        role: user.role,
+        phone: user.phone,
+      },
     };
   }
 

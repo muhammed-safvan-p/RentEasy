@@ -1,9 +1,12 @@
 require('dotenv').config();
 
 // Ensure required environment variables exist on boot
-if (!process.env.JWT_SECRET) {
-  console.error('FATAL: JWT_SECRET environment variable is missing.');
-  process.exit(1);
+const REQUIRED_ENV = ['JWT_SECRET', 'MONGODB_URI'];
+for (const envKey of REQUIRED_ENV) {
+  if (!process.env[envKey]) {
+    console.error(`FATAL: ${envKey} environment variable is missing.`);
+    process.exit(1);
+  }
 }
 
 const express = require('express');
@@ -23,6 +26,7 @@ const walletRoutes = require('./routes/walletRoutes');
 const vehicleRoutes = require('./routes/vehicleRoutes');
 const bookingRoutes = require('./routes/bookingRoutes');
 const userRoutes = require('./routes/userRoutes');
+const uploadRoutes = require('./routes/uploadRoutes');
 const errorHandler = require('./middleware/errorMiddleware');
 
 // Initialize express app
@@ -74,6 +78,9 @@ app.use((req, res, next) => {
   next();
 });
 
+// Health check routes mounted before rate limiting to protect uptime monitors / keep-alive pings
+app.use('/api/health', healthRoutes);
+
 // Rate limiting: 300 requests per 15 minutes per IP in production (relaxed in development)
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -82,17 +89,18 @@ const limiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 });
-// Apply rate limiter to all API routes
+// Apply rate limiter to remaining API routes
 app.use('/api/', limiter);
 
-// Routes
-app.use('/api/health', healthRoutes);
+// Functional API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/vehicles', walletRoutes);
 app.use('/api/vehicles', vehicleRoutes);
 app.use('/api/bookings', bookingRoutes);
 app.use('/api/user', userRoutes);
+app.use('/api/users', userRoutes);
+app.use('/api/upload', uploadRoutes);
 
 // Error handling middleware (global)
 app.use(errorHandler);
@@ -136,4 +144,3 @@ const startServer = async () => {
 };
 
 startServer();
-

@@ -39,10 +39,7 @@ class LockService {
     // Check if another vehicle lock overlaps this exact timeframe
     const overlappingLocks = await lockRepository.findByVehicleDateRange(vehicleId, start, end);
     if (overlappingLocks.length > 0) {
-      throw new AppError(
-        'Cannot lock vehicle: Another lock already overlaps this period.',
-        409
-      );
+      throw new AppError('Cannot lock vehicle: Another lock already overlaps this period.', 409);
     }
 
     const lock = await lockRepository.create({
@@ -74,9 +71,7 @@ class LockService {
       endDate: l.endDate,
       reason: l.reason,
       createdAt: l.createdAt,
-      lockedBy: l.lockedBy
-        ? { _id: l.lockedBy._id, username: l.lockedBy.username }
-        : undefined,
+      lockedBy: l.lockedBy ? { _id: l.lockedBy._id, username: l.lockedBy.username } : undefined,
     }));
   }
 
@@ -89,7 +84,8 @@ class LockService {
       throw new AppError('Lock not found.', 404);
     }
 
-    const isCreator = lock.lockedBy._id.toString() === user._id.toString();
+    const lockOwnerId = lock.lockedBy?._id?.toString() || lock.lockedBy?.toString();
+    const isCreator = Boolean(lockOwnerId && lockOwnerId === user._id.toString());
     const isAdmin = user.role === 'admin';
 
     if (!isCreator && !isAdmin) {

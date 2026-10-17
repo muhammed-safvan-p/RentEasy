@@ -3,12 +3,15 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Shield, Calendar, AlertCircle, Eye, EyeOff, Loader2, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, Shield, Calendar, Phone, AlertCircle, Eye, EyeOff, Loader2, CheckCircle2 } from "lucide-react";
 import { api } from "@/lib/api";
+import { validatePhoneNumber, normalizePhoneNumber } from "@/lib/phoneValidation";
+import { mutate } from "swr";
 
 interface UserProfile {
   _id: string;
   username: string;
+  phone?: string;
   role: string;
   isBlock: boolean;
   createdAt: string;
@@ -31,6 +34,13 @@ export default function ProfilePage() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [passwordUpdating, setPasswordUpdating] = useState(false);
   const [passwordMessage, setPasswordMessage] = useState<{ type: 'error' | 'success', text: string } | null>(null);
+
+  // Phone State
+  const [isEditingPhone, setIsEditingPhone] = useState(false);
+  const [newPhone, setNewPhone] = useState("");
+  const [phoneUpdating, setPhoneUpdating] = useState(false);
+  const [phoneError, setPhoneError] = useState("");
+  const [phoneSuccess, setPhoneSuccess] = useState("");
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -93,6 +103,36 @@ export default function ProfilePage() {
   };
 
   const isPasswordValid = currentPassword.length > 0 && newPassword.length >= 6 && newPassword === confirmPassword;
+
+  const handleUpdatePhone = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPhoneError("");
+    setPhoneSuccess("");
+
+    const validationErr = validatePhoneNumber(newPhone);
+    if (validationErr) {
+      setPhoneError(validationErr);
+      return;
+    }
+
+    setPhoneUpdating(true);
+    try {
+      const normalized = normalizePhoneNumber(newPhone);
+      const res = await api.patch<{ message: string; user?: { phone: string } }>("/api/users/me/phone", {
+        phone: normalized,
+      });
+
+      const updatedPhone = res?.user?.phone || normalized;
+      setUser((prev) => (prev ? { ...prev, phone: updatedPhone } : null));
+      setPhoneSuccess("Phone number updated successfully!");
+      setIsEditingPhone(false);
+      mutate("/api/user/me");
+    } catch (err: unknown) {
+      setPhoneError(err instanceof Error ? err.message : "Failed to update phone number");
+    } finally {
+      setPhoneUpdating(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -166,6 +206,103 @@ export default function ProfilePage() {
               <span className="text-sm font-semibold text-white">
                 {user?.createdAt ? new Date(user.createdAt).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : 'Unknown'}
               </span>
+            </div>
+
+            <div className="w-full bg-[#0f0f20] p-4 rounded-2xl border border-white/5 mt-3 text-left">
+              <div className="flex justify-between items-center">
+                <div className="flex items-center gap-3 text-slate-400">
+                  <Phone className="w-5 h-5 text-indigo-400" />
+                  <span className="text-sm font-medium">Phone Number</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold text-white">
+                    {user?.phone ? `+91 ${user.phone}` : "Not set"}
+                  </span>
+                  {!isEditingPhone && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setNewPhone(user?.phone || "");
+                        setPhoneError("");
+                        setPhoneSuccess("");
+                        setIsEditingPhone(true);
+                      }}
+                      className="text-xs text-indigo-400 hover:text-indigo-300 font-medium px-2 py-1 rounded-lg hover:bg-white/5 transition-colors cursor-pointer"
+                    >
+                      {user?.phone ? "Edit" : "Add"}
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {isEditingPhone && (
+                <form onSubmit={handleUpdatePhone} className="mt-3 pt-3 border-t border-white/5 space-y-3">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
+                      10-Digit Mobile Number
+                    </label>
+                    <div className="relative">
+                      <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500 text-xs font-semibold">
+                        +91
+                      </span>
+                      <input
+                        type="tel"
+                        inputMode="numeric"
+                        maxLength={10}
+                        autoFocus
+                        value={newPhone}
+                        onChange={(e) => {
+                          setNewPhone(e.target.value);
+                          setPhoneError("");
+                        }}
+                        placeholder="10-digit mobile number"
+                        className="w-full bg-[#12121f] border border-white/10 rounded-xl pl-11 pr-3 py-2 text-white placeholder:text-slate-600 focus:outline-none focus:border-indigo-500 text-sm transition-all"
+                      />
+                    </div>
+                    {phoneError && (
+                      <p className="mt-1 text-xs text-rose-400 flex items-center gap-1">
+                        <AlertCircle className="w-3.5 h-3.5" />
+                        <span>{phoneError}</span>
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="flex items-center justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsEditingPhone(false);
+                        setPhoneError("");
+                      }}
+                      disabled={phoneUpdating}
+                      className="px-3 py-1.5 text-xs text-slate-400 hover:text-white rounded-lg hover:bg-white/5 transition-colors cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={phoneUpdating || !newPhone}
+                      className="btn-primary px-3 py-1.5 text-xs rounded-lg font-semibold flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                    >
+                      {phoneUpdating ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          <span>Saving...</span>
+                        </>
+                      ) : (
+                        <span>Save Phone</span>
+                      )}
+                    </button>
+                  </div>
+                </form>
+              )}
+
+              {phoneSuccess && (
+                <div className="mt-2 text-xs text-emerald-400 flex items-center gap-1">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>{phoneSuccess}</span>
+                </div>
+              )}
             </div>
           </div>
         </div>

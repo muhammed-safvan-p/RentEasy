@@ -6,14 +6,10 @@
  */
 
 const getAllowedOrigins = () => {
-  const defaultOrigins = [
-    'http://localhost:3000',
-    'http://localhost:5173',
-  ];
+  const defaultOrigins = ['http://localhost:3000', 'http://localhost:5173'];
 
   const envOrigins = process.env.ALLOWED_ORIGINS
-    ? process.env.ALLOWED_ORIGINS
-        .split(',')
+    ? process.env.ALLOWED_ORIGINS.split(',')
         .map((origin) => origin.trim().replace(/\/$/, ''))
         .filter(Boolean)
     : [];
@@ -30,14 +26,14 @@ const corsOptions = {
 
     const allowedOrigins = getAllowedOrigins();
     const isAllowed = allowedOrigins.includes(origin);
-    const isVercelPreview =
-      process.env.NODE_ENV !== 'production' && origin.endsWith('.vercel.app');
+    const isVercelPreview = process.env.NODE_ENV !== 'production' && origin.endsWith('.vercel.app');
 
     if (isAllowed || isVercelPreview) {
       return callback(null, true);
     }
 
-    return callback(new Error(`CORS policy violation: origin "${origin}" is not allowed`));
+    // Standard CORS rejection without triggering an unhandled 500 server crash
+    return callback(null, false);
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],

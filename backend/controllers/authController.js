@@ -14,9 +14,9 @@ const getCookieOptions = (isClear = false) => {
 class AuthController {
   async signup(req, res, next) {
     try {
-      const { username, password } = req.body;
+      const { username, password, phone } = req.body;
 
-      const { token, user } = await authService.signup(username, password);
+      const { token, user } = await authService.signup(username, password, phone);
 
       // Set JWT in HTTP-Only Cookie with cross-domain compatibility
       res.cookie('token', token, getCookieOptions());
@@ -25,10 +25,33 @@ class AuthController {
         message: 'Signup successful',
         role: user.role,
         token,
+        user: {
+          _id: user._id,
+          username: user.username,
+          role: user.role,
+          phone: user.phone,
+        },
       });
     } catch (error) {
       if (error.message === 'User already exists') {
         return next(new AppError('Username is already taken. Please choose a different one.', 409));
+      }
+      if (error.message === 'Phone already exists') {
+        return next(
+          new AppError('This phone number is already registered with another account.', 409)
+        );
+      }
+      if (error.code === 11000) {
+        if (error.keyPattern && error.keyPattern.phone) {
+          return next(
+            new AppError('This phone number is already registered with another account.', 409)
+          );
+        }
+        if (error.keyPattern && error.keyPattern.username) {
+          return next(
+            new AppError('Username is already taken. Please choose a different one.', 409)
+          );
+        }
       }
       next(error);
     }
@@ -47,6 +70,12 @@ class AuthController {
         message: 'Login successful',
         role: user.role,
         token,
+        user: {
+          _id: user._id,
+          username: user.username,
+          role: user.role,
+          phone: user.phone,
+        },
       });
     } catch (error) {
       if (error.message === 'Account blocked') {

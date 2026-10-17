@@ -19,7 +19,13 @@ class BookingService {
    * Checks if there are overlapping active (non-cancelled) bookings for a vehicle.
    * Scoped strictly to the VEHICLE (checks all owners' bookings on that vehicle).
    */
-  async checkOverlap({ vehicleId, startDateTime, endDateTime, excludeBookingId = null, session = null }) {
+  async checkOverlap({
+    vehicleId,
+    startDateTime,
+    endDateTime,
+    excludeBookingId = null,
+    session = null,
+  }) {
     return await bookingRepository.findOverlapping({
       vehicleId,
       startDateTime,
@@ -28,7 +34,6 @@ class BookingService {
       session,
     });
   }
-
 
   /**
    * Asserts whether the requesting user has permission to access or mutate bookings for this vehicle.
@@ -67,7 +72,15 @@ class BookingService {
    *   rolling back tentative booking and retrying on concurrent collisions.
    * - On overlap detection or collision: returns HTTP 409 Conflict.
    */
-  async createBooking({ vehicleId, customerName, startDateTime, endDateTime, totalAmount, createdBy, user }) {
+  async createBooking({
+    vehicleId,
+    customerName,
+    startDateTime,
+    endDateTime,
+    totalAmount,
+    createdBy,
+    user,
+  }) {
     const start = new Date(startDateTime);
     const end = new Date(endDateTime);
 
@@ -118,7 +131,10 @@ class BookingService {
         });
 
         if (conflictingBooking) {
-          const conflictError = new AppError('This vehicle is already booked for the selected time.', 409);
+          const conflictError = new AppError(
+            'This vehicle is already booked for the selected time.',
+            409
+          );
           conflictError.conflictingBooking = {
             id: conflictingBooking._id,
             startDateTime: conflictingBooking.startDateTime,
@@ -164,7 +180,10 @@ class BookingService {
       });
 
       if (conflictingBooking) {
-        const conflictError = new AppError('This vehicle is already booked for the selected time.', 409);
+        const conflictError = new AppError(
+          'This vehicle is already booked for the selected time.',
+          409
+        );
         conflictError.conflictingBooking = {
           id: conflictingBooking._id,
           startDateTime: conflictingBooking.startDateTime,
@@ -177,7 +196,10 @@ class BookingService {
       const tentativeBooking = await bookingRepository.create(bookingPayload);
 
       // Atomic CAS: Only increment if vehicle bookingVersion matches currentVersion
-      const versionUpdated = await vehicleRepository.incrementBookingVersion(vehicleId, currentVersion);
+      const versionUpdated = await vehicleRepository.incrementBookingVersion(
+        vehicleId,
+        currentVersion
+      );
 
       if (versionUpdated) {
         // Success! Atomic compare-and-swap confirmed no concurrent bookings committed.
@@ -267,7 +289,11 @@ class BookingService {
     }
 
     // Dates or vehicle DID change. Check vehicle locks first.
-    const overlappingLocks = await lockRepository.findByVehicleDateRange(targetVehicleId, newStart, newEnd);
+    const overlappingLocks = await lockRepository.findByVehicleDateRange(
+      targetVehicleId,
+      newStart,
+      newEnd
+    );
     if (overlappingLocks.length > 0) {
       const lock = overlappingLocks[0];
       throw new AppError(
@@ -306,7 +332,10 @@ class BookingService {
         });
 
         if (conflictingBooking) {
-          const conflictError = new AppError('This vehicle is already booked for the selected time.', 409);
+          const conflictError = new AppError(
+            'This vehicle is already booked for the selected time.',
+            409
+          );
           conflictError.conflictingBooking = {
             id: conflictingBooking._id,
             startDateTime: conflictingBooking.startDateTime,
@@ -344,7 +373,10 @@ class BookingService {
       });
 
       if (conflictingBooking) {
-        const conflictError = new AppError('This vehicle is already booked for the selected time.', 409);
+        const conflictError = new AppError(
+          'This vehicle is already booked for the selected time.',
+          409
+        );
         conflictError.conflictingBooking = {
           id: conflictingBooking._id,
           startDateTime: conflictingBooking.startDateTime,
@@ -358,7 +390,10 @@ class BookingService {
       await bookingRepository.save(booking);
 
       // Atomic CAS on Vehicle
-      const versionUpdated = await vehicleRepository.incrementBookingVersion(targetVehicleId, currentVersion);
+      const versionUpdated = await vehicleRepository.incrementBookingVersion(
+        targetVehicleId,
+        currentVersion
+      );
 
       if (versionUpdated) {
         // Success!
@@ -381,7 +416,10 @@ class BookingService {
   /**
    * Cancels a booking and optionally records refund transaction.
    */
-  async cancelBooking(id, { refundAmount, refundPaymentMethod, cancellationNote, cancelledBy, user }) {
+  async cancelBooking(
+    id,
+    { refundAmount, refundPaymentMethod, cancellationNote, cancelledBy, user }
+  ) {
     const booking = await bookingRepository.findById(id);
     if (!booking) {
       throw new AppError('Booking not found.', 404);
@@ -397,7 +435,9 @@ class BookingService {
     let parsedRefundAmount = 0;
     if (refundAmount !== undefined && refundAmount !== null && refundAmount !== '') {
       parsedRefundAmount = roundCurrency(refundAmount);
-      const maxRefundable = roundCurrency((booking.paidAmount || 0) - (booking.refundedAmount || 0));
+      const maxRefundable = roundCurrency(
+        (booking.paidAmount || 0) - (booking.refundedAmount || 0)
+      );
       if (parsedRefundAmount > maxRefundable) {
         throw new AppError(
           `Refund amount (${parsedRefundAmount}) cannot exceed refundable balance (${maxRefundable}).`,
@@ -488,7 +528,8 @@ class BookingService {
     const vehicle = await vehicleRepository.findById(booking.vehicleId);
     this.assertVehicleAccess(vehicle, user, 'record payments for');
 
-    const paymentTimestamp = paidAt && !isNaN(new Date(paidAt).getTime()) ? new Date(paidAt) : new Date();
+    const paymentTimestamp =
+      paidAt && !isNaN(new Date(paidAt).getTime()) ? new Date(paidAt) : new Date();
 
     const result = await runInTransaction(async (session) => {
       let wallet = await walletRepository.findByVehicleId(booking.vehicleId, session);
@@ -524,8 +565,8 @@ class BookingService {
           note: note
             ? note.trim()
             : booking.customerName
-            ? `Booking payment • ${booking.customerName}`
-            : `Payment for booking ${booking._id}`,
+              ? `Booking payment • ${booking.customerName}`
+              : `Payment for booking ${booking._id}`,
           source: 'booking',
           bookingId: booking._id,
           createdBy: recordedBy,

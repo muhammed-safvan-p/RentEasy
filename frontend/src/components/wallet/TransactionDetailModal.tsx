@@ -94,7 +94,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
             <span className="font-semibold text-white max-w-[220px] text-right truncate">
               {(() => {
                 const bookingObj = typeof selectedTx.bookingId === "object" ? selectedTx.bookingId : null;
-                let note = selectedTx.note;
+                const note = selectedTx.note;
                 if (!note) {
                   return selectedTx.type === "income" ? "Unspecified Income" : "Unspecified Expense";
                 }
